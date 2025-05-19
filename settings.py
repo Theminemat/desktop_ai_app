@@ -12,7 +12,8 @@ default_settings = {
     "api_key": "Enter your Gemini API key here",
     "chat_length": 5,
     "activation_word": "Manfred",
-    "stop_words": ["stop", "exit", "quit"]
+    "stop_words": ["stop", "exit", "quit"],
+    "open_links_automatically": True  # Neue Einstellung
 }
 
 
@@ -61,29 +62,35 @@ def save_settings(settings):
 class ModernSettingsApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Bot Settings")
-
         # --- Set window icon ---
+        # Moved to be one of the first operations after root is assigned,
+        # to ensure it's set as early as possible for the window.
+        # This uses 'icon.ico' for the window/taskbar icon.
         try:
-            icon_path = "icon.ico"  # Changed to .ico
-            # Check if the icon file exists
+            icon_path = "icon.ico"
             if os.path.exists(icon_path):
-                # Use iconbitmap for .ico files
                 self.root.iconbitmap(default=icon_path)
             else:
-                print(f"Warning: Icon file '{icon_path}' not found for settings window.")
+                # Diese Warnung ist wichtig, wenn das Icon nicht gefunden wird.
+                print(f"Warning: Icon file '{icon_path}' not found. Settings window will use default icon.")
         except tk.TclError as e:
-            # This can happen if the .ico file is not found, format is not supported, or other Tcl issues
+            # Diese Fehlermeldung hilft bei Problemen mit dem Icon-Format oder Tkinter.
             print(f"Warning: Could not load icon '{icon_path}' for settings window (TclError): {e}")
         except Exception as e:
-            # Catch any other unexpected errors during icon loading
+            # Fängt andere unerwartete Fehler beim Laden des Icons ab.
             print(f"Warning: An unexpected error occurred while setting icon for settings window: {e}")
 
+        self.root.title("Bot Settings") # Title can be set after icon
+
         # Set minimum window size
-        self.root.minsize(500, 400)
+        self.root.minsize(500, 450) # Increased height slightly for new setting
 
         # Apply Sun Valley theme (modern theme for tkinter)
-        sv_ttk.set_theme("dark")  # Options: "light" or "dark"
+        try:
+            sv_ttk.set_theme("dark")  # Options: "light" or "dark"
+        except Exception as e:
+            print(f"Warning: Could not set sv_ttk theme: {e}. Using default Tkinter theme.")
+
 
         # Create custom fonts
         self.header_font = Font(family="Segoe UI", size=16, weight="bold")
@@ -114,12 +121,14 @@ class ModernSettingsApp:
         # Grid layout for settings
         settings_frame.columnconfigure(1, weight=1)
 
+        current_row = 0
+
         # --- API Key ---
         ttk.Label(
             settings_frame,
             text="API Key:",
             font=self.label_font
-        ).grid(row=0, column=0, sticky="w", pady=10)
+        ).grid(row=current_row, column=0, sticky="w", pady=10)
 
         self.api_key_var = tk.StringVar(value=self.settings.get("api_key", default_settings["api_key"]))
         api_key_entry = ttk.Entry(
@@ -127,14 +136,15 @@ class ModernSettingsApp:
             textvariable=self.api_key_var,
             width=40
         )
-        api_key_entry.grid(row=0, column=1, sticky="ew", padx=(10, 0), pady=10)
+        api_key_entry.grid(row=current_row, column=1, sticky="ew", padx=(10, 0), pady=10)
+        current_row += 1
 
         # --- Chat Length ---
         ttk.Label(
             settings_frame,
             text="Chat Length:",
             font=self.label_font
-        ).grid(row=1, column=0, sticky="w", pady=10)
+        ).grid(row=current_row, column=0, sticky="w", pady=10)
 
         self.chat_length_var = tk.IntVar(value=self.settings.get("chat_length", default_settings["chat_length"]))
         chat_length_spinbox = ttk.Spinbox(
@@ -144,14 +154,15 @@ class ModernSettingsApp:
             textvariable=self.chat_length_var,
             width=10
         )
-        chat_length_spinbox.grid(row=1, column=1, sticky="w", padx=(10, 0), pady=10)
+        chat_length_spinbox.grid(row=current_row, column=1, sticky="w", padx=(10, 0), pady=10)
+        current_row += 1
 
         # --- Activation Word ---
         ttk.Label(
             settings_frame,
             text="Activation Word:",
             font=self.label_font
-        ).grid(row=2, column=0, sticky="w", pady=10)
+        ).grid(row=current_row, column=0, sticky="w", pady=10)
 
         self.activation_word_var = tk.StringVar(
             value=self.settings.get("activation_word", default_settings["activation_word"]))
@@ -159,14 +170,15 @@ class ModernSettingsApp:
             settings_frame,
             textvariable=self.activation_word_var
         )
-        activation_word_entry.grid(row=2, column=1, sticky="ew", padx=(10, 0), pady=10)
+        activation_word_entry.grid(row=current_row, column=1, sticky="ew", padx=(10, 0), pady=10)
+        current_row += 1
 
         # --- Stop Words ---
         ttk.Label(
             settings_frame,
             text="Stop Words:",
             font=self.label_font
-        ).grid(row=3, column=0, sticky="w", pady=10)
+        ).grid(row=current_row, column=0, sticky="w", pady=10)
 
         stop_words_str = ", ".join(self.settings.get("stop_words", default_settings["stop_words"]))
         self.stop_words_var = tk.StringVar(value=stop_words_str)
@@ -174,27 +186,50 @@ class ModernSettingsApp:
             settings_frame,
             textvariable=self.stop_words_var
         )
-        stop_words_entry.grid(row=3, column=1, sticky="ew", padx=(10, 0), pady=10)
+        stop_words_entry.grid(row=current_row, column=1, sticky="ew", padx=(10, 0), pady=10)
+        current_row += 1
         ttk.Label(
             settings_frame,
             text="Separate words with commas",
-            font=("Segoe UI", 8),
-            foreground="gray"
-        ).grid(row=4, column=1, sticky="w", padx=(10, 0))
+            font=("Segoe UI", 8), # Smaller font for hint
+            foreground="gray" # Muted color for hint
+        ).grid(row=current_row, column=1, sticky="w", padx=(10, 0))
+        current_row += 1
+
+
+        # --- Open Links Automatically ---
+        ttk.Label(
+            settings_frame,
+            text="Open Links in Browser:",
+            font=self.label_font
+        ).grid(row=current_row, column=0, sticky="w", pady=10)
+
+        self.open_links_var = tk.BooleanVar(
+            value=self.settings.get("open_links_automatically", default_settings["open_links_automatically"])
+        )
+        open_links_checkbutton = ttk.Checkbutton(
+            settings_frame,
+            variable=self.open_links_var,
+            text="Automatically open detected links"
+        )
+        open_links_checkbutton.grid(row=current_row, column=1, sticky="w", padx=(10,0), pady=10)
+        current_row += 1
+
 
         # Buttons frame
-        button_frame = ttk.Frame(main_frame)
-        button_frame.pack(fill=tk.X, pady=(20, 0))
-
-        # Create a separator above buttons
+        # Create a separator above buttons for better visual separation
         separator = ttk.Separator(main_frame, orient='horizontal')
-        separator.pack(fill=tk.X, pady=(10, 20))
+        separator.pack(fill=tk.X, pady=(10, 10), before=settings_frame, side=tk.BOTTOM) # Pack separator before buttons
+
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill=tk.X, pady=(10, 0), side=tk.BOTTOM) # Buttons at the very bottom
+
 
         # Save and Cancel buttons
         save_button = ttk.Button(
             button_frame,
             text="Save Settings",
-            command=self.save_and_close,  # Changed command
+            command=self.save_and_close,
             style="Accent.TButton"  # Sun Valley theme accent button
         )
         save_button.pack(side=tk.RIGHT, padx=5)
@@ -209,63 +244,79 @@ class ModernSettingsApp:
         # Center the window
         self.center_window()
 
-        # Ensure the window is modal if it's a Toplevel
+        # Ensure the window is modal if it's a Toplevel (e.g., opened from main app)
         if isinstance(self.root, tk.Toplevel):
-            self.root.grab_set()
-            self.root.protocol("WM_DELETE_WINDOW", self.root.destroy)  # Ensure X button works
+            self.root.grab_set()  # Makes the window modal
+            self.root.protocol("WM_DELETE_WINDOW", self.root.destroy)  # Ensure X button closes modal window
 
     def center_window(self):
         """Center the window on the screen."""
-        self.root.update_idletasks()
+        self.root.update_idletasks() # Process pending Tkinter events to get correct window size
         width = self.root.winfo_width()
         height = self.root.winfo_height()
-        # Ensure width and height are not zero if window not fully rendered yet
-        if width < 500: width = 500
-        if height < 400: height = 400
+
+        min_w, min_h = self.root.minsize()
+        if width < min_w: width = min_w
+        if height < min_h: height = min_h
 
         x = (self.root.winfo_screenwidth() // 2) - (width // 2)
         y = (self.root.winfo_screenheight() // 2) - (height // 2)
         self.root.geometry(f'{width}x{height}+{x}+{y}')
 
-    def save_and_close(self):  # Renamed method for clarity
+    def save_and_close(self):
         try:
             # Validate chat_length before creating the dictionary
-            chat_length_val = self.chat_length_var.get()
+            chat_length_val = self.chat_length_var.get() # This can raise TclError if not int
+            # The isinstance check is somewhat redundant due to TclError catch but good for clarity
             if not isinstance(chat_length_val, int) or chat_length_val < 1:
                 messagebox.showerror("Invalid Input", "Chat length must be a positive integer.")
-                return  # Keep window open
+                return
 
             new_settings = {
                 "api_key": self.api_key_var.get(),
                 "chat_length": chat_length_val,
                 "activation_word": self.activation_word_var.get(),
-                "stop_words": [word.strip() for word in self.stop_words_var.get().split(",") if word.strip()]
+                "stop_words": [word.strip() for word in self.stop_words_var.get().split(",") if word.strip()],
+                "open_links_automatically": self.open_links_var.get() # Speichern der neuen Einstellung
             }
 
-            # The save_settings function shows its own messagebox (success/error)
-            # and returns True on success, False on failure.
-            if save_settings(new_settings):
-                self.root.destroy()  # Close the window only if save was successful
-        except tk.TclError:  # Handles if chat_length_var.get() fails due to non-integer input in Spinbox
-            messagebox.showerror("Invalid Input", "Chat length must be an integer.")
-        except ValueError:  # Should be caught by TclError or explicit check, but as a fallback
-            messagebox.showerror("Invalid Input", "Chat length must be an integer.")
+            if save_settings(new_settings): # save_settings shows its own success/error messagebox
+                self.root.destroy() # Close window only if save was successful
+        except tk.TclError: # Catches errors from .get() if spinbox/entry has invalid content for IntVar
+            messagebox.showerror("Invalid Input", "Chat length must be a valid integer.")
+        except ValueError: # Should ideally be caught by TclError for IntVar, but as a fallback
+            messagebox.showerror("Invalid Input", "Chat length must be an integer (ValueError).")
 
 
 if __name__ == "__main__":
+    # This block is for testing settings.py directly.
     # You need to install sv_ttk library: pip install sv-ttk
     root = tk.Tk()
-    # To test icon functionality when running settings.py directly,
-    # ensure 'icon.ico' is in the same directory.
-    # If sv_ttk is not installed, this will raise an error.
+
+    # --- Set icon for the main Tk() window if run directly ---
+    try:
+        icon_path_main = "icon.ico"
+        if os.path.exists(icon_path_main):
+            root.iconbitmap(default=icon_path_main)
+            print(f"Main window icon set to '{icon_path_main}' for direct execution.")
+        else:
+            print(f"Warning: Icon file '{icon_path_main}' not found for main window (direct execution).")
+    except Exception as e:
+        print(f"Warning: Could not set main window icon (direct execution): {e}")
+
+
     try:
         app = ModernSettingsApp(root)
-    except Exception as e:
-        print(f"Error initializing ModernSettingsApp (likely sv_ttk missing or theme error): {e}")
+    except NameError as e: # sv_ttk might not be defined if import failed
+        print(f"Error initializing ModernSettingsApp (likely sv_ttk missing or import error): {e}")
         print("Please ensure 'sv_ttk' is installed: pip install sv-ttk")
-        # Fallback to basic Tkinter if sv_ttk fails, for testing core logic
         root.title("Bot Settings (Basic Fallback)")
-        tk.Label(root, text="Error loading modern theme. Basic fallback UI.").pack(pady=20)
-        tk.Button(root, text="Close", command=root.destroy).pack(pady=10)
+        ttk.Label(root, text="Error loading modern theme. sv_ttk might be missing. Basic fallback UI.").pack(pady=20)
+        ttk.Button(root, text="Close", command=root.destroy).pack(pady=10)
+    except Exception as e:
+        print(f"An unexpected error occurred initializing ModernSettingsApp: {e}")
+        root.title("Bot Settings (Error)")
+        ttk.Label(root, text=f"Could not initialize settings UI: {e}").pack(pady=20)
+        ttk.Button(root, text="Close", command=root.destroy).pack(pady=10)
 
     root.mainloop()

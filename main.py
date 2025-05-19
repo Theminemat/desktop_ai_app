@@ -5,87 +5,140 @@ import speech_recognition as sr
 import playsound
 import webbrowser
 import tkinter as tk
-from tkinter import ttk  # Für bessere Widgets
-from tkinter import messagebox  # Für Nachrichten
-from threading import Thread, Event
+from tkinter import messagebox
+from threading import Thread, Event # Event wird hier benötigt
 from edge_tts import Communicate
 from google import genai as gai
 from google.genai import types
-import numpy as np
+import numpy as np # Wird nicht mehr direkt in main.py benötigt, aber schadet nicht
 import time
 import pygame
 import sys
-import json  # Für config.json
-
-# System Tray Imports
 from pystray import MenuItem as item, Icon as icon
 from PIL import Image, ImageDraw
 
+# Import from settings.py
+try:
+    from settings import (
+        load_settings as app_load_settings,
+        save_settings as app_save_settings,
+        ModernSettingsApp,
+        default_settings as app_default_settings
+    )
+except ImportError:
+    messagebox.showerror("Fehler",
+                         "settings.py konnte nicht gefunden oder importiert werden. Stellen Sie sicher, dass die Datei im selben Verzeichnis liegt.")
+    sys.exit(1)
+
+# Import from overlay.py
+try:
+    from overlay import ModernOverlay # <<< NEUER IMPORT
+except ImportError:
+    messagebox.showerror("Fehler",
+                         "overlay.py konnte nicht gefunden oder importiert werden. Stellen Sie sicher, dass die Datei im selben Verzeichnis liegt.")
+    sys.exit(1)
+
+
 pygame.mixer.init()
 
-# --- Konfigurationsmanagement ---
-CONFIG_FILE = "config.json"
-DEFAULT_CONFIG = {
-    "api_key": "DEIN_GOOGLE_AI_API_KEY_HIER_EINFUEGEN",
-    "codeword": "manfred",
-    "stopwords": ["stopp", "stop", "halte an", "halt an"],
-    "max_history": 5
-}
+# --- Konfigurationsmanagement (jetzt über settings.py) ---
+current_app_settings = app_load_settings()
+
+CodeWord = ""
+StopWords = []
+MAX_HISTORY = 0
+API_KEY = ""
+OPEN_LINKS_AUTOMATICALLY = True
+
+client = None
+chat = None
+chat_config = None
 
 
-def load_config():
-    if not os.path.exists(CONFIG_FILE):
-        save_config(DEFAULT_CONFIG)  # Erstelle Default-Config, falls nicht vorhanden
-        return DEFAULT_CONFIG
-    try:
-        with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
-            config = json.load(f)
-            # Stelle sicher, dass alle Keys vorhanden sind, füge Defaults hinzu, falls nicht
-            for key, value in DEFAULT_CONFIG.items():
-                if key not in config:
-                    config[key] = value
-            return config
-    except (json.JSONDecodeError, IOError) as e:
-        print(f"Fehler beim Laden der Konfiguration ({CONFIG_FILE}): {e}. Verwende Standardkonfiguration.")
-        return DEFAULT_CONFIG
+def update_globals_from_settings(loaded_settings, initial_load=False):
+    global CodeWord, StopWords, MAX_HISTORY, API_KEY, current_app_settings
+    global client, chat, chat_config, OPEN_LINKS_AUTOMATICALLY
 
+    old_api_key = current_app_settings.get("api_key") if not initial_load else None
+    old_chat_length = current_app_settings.get("chat_length") if not initial_load else None
+    old_open_links = current_app_settings.get("open_links_automatically") if not initial_load else None
 
-def save_config(config_data):
-    try:
-        with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
-            json.dump(config_data, f, indent=4, ensure_ascii=False)
-        print(f"Konfiguration gespeichert in {CONFIG_FILE}")
-    except IOError as e:
-        print(f"Fehler beim Speichern der Konfiguration ({CONFIG_FILE}): {e}")
+    current_app_settings = loaded_settings
 
-
-# Lade Konfiguration beim Start
-app_config = load_config()
-
-CodeWord = app_config.get("codeword", DEFAULT_CONFIG["codeword"])
-StopWords = app_config.get("stopwords", DEFAULT_CONFIG["stopwords"])
-MAX_HISTORY = app_config.get("max_history", DEFAULT_CONFIG["max_history"])
-API_KEY = os.getenv("GEMINI_API_KEY") or app_config.get("api_key", DEFAULT_CONFIG["api_key"])
-
-if not API_KEY or API_KEY == "DEIN_GOOGLE_AI_API_KEY_HIER_EINFUEGEN":
-    print("WARNUNG: API-Key nicht konfiguriert. Bitte in config.json oder als GEMINI_API_KEY Umgebungsvariable setzen.")
-    # Hier könntest du die Anwendung beenden oder in einen eingeschränkten Modus gehen
-    # sys.exit("API Key fehlt.") # Beispiel für Beenden
-
-client = gai.Client(api_key=API_KEY)
-
-chat_config = types.GenerateContentConfig(
-    system_instruction=(
-        "You are Manfred, a highly intelligent and efficient AI assistant "
-        "Reply without formatting and keep replys short and simple "
-        "You always speak respectfully, and in fluent German. "
-        "Your responses must be clear, concise, and helpful — avoid unnecessary elaboration, especially for simple tasks. "
-        "A good amount of humor is is good to keep the conversation natural - friend like. Your top priorities are efficiency and clarity. "
-        "Generate the reply that a dumb TTS can read it correctly"
-        "You can open links on my pc by just including them in your message without formatting just start links with https:// also use this when the users asks you to search on a website like youtube"
+    CodeWord = current_app_settings.get("activation_word", app_default_settings["activation_word"])
+    StopWords = current_app_settings.get("stop_words", app_default_settings["stop_words"])
+    MAX_HISTORY = current_app_settings.get("chat_length", app_default_settings["chat_length"])
+    OPEN_LINKS_AUTOMATICALLY = current_app_settings.get(
+        "open_links_automatically",
+        app_default_settings.get("open_links_automatically", True)
     )
-)
-chat = client.chats.create(model="gemini-2.0-flash", config=chat_config)
+
+    env_api_key = os.getenv("GEMINI_API_KEY")
+    settings_api_key = current_app_settings.get("api_key", app_default_settings["api_key"])
+    API_KEY = env_api_key or settings_api_key
+
+    if not API_KEY:
+        print(
+            "WARNUNG: API-Key nicht konfiguriert. Bitte in settings.json oder als GEMINI_API_KEY Umgebungsvariable setzen.")
+        if not initial_load and overlay and overlay.winfo_exists():
+            messagebox.showwarning("API Key Warnung",
+                                   "API-Key ist nicht konfiguriert. Bitte in den Einstellungen festlegen.")
+
+    if chat_config is None:
+        chat_config = types.GenerateContentConfig(
+            system_instruction=(
+                "You are Manfred, a highly intelligent and efficient AI assistant "
+                "Reply without formatting and keep replys short and simple "
+                "You always speak respectfully, and in fluent German. "
+                "Your responses must be clear, concise, and helpful — avoid unnecessary elaboration, especially for simple tasks. "
+                "A good amount of humor is is good to keep the conversation natural - friend like. Your top priorities are efficiency and clarity. "
+                "Generate the reply that a dumb TTS can read it correctly"
+                "You can open links on my pc by just including them in your message without formatting just start links with https:// also use this when the users asks you to search on a website like youtube"
+            )
+        )
+
+    api_key_changed = (old_api_key != API_KEY) and not env_api_key
+    chat_length_changed = (old_chat_length != MAX_HISTORY)
+    open_links_setting_changed = (old_open_links != OPEN_LINKS_AUTOMATICALLY) if not initial_load else False
+
+    if initial_load or api_key_changed:
+        if API_KEY:
+            try:
+                client = gai.Client(api_key=API_KEY)
+                current_history = chat.get_history() if chat and api_key_changed else []
+                chat = client.chats.create(model="gemini-2.0-flash", config=chat_config,
+                                           history=current_history)
+                print("AI Client und Chat initialisiert/aktualisiert.")
+                if api_key_changed and not initial_load:
+                    messagebox.showinfo("Einstellungen aktualisiert",
+                                        "API Key wurde aktualisiert. Der AI Client wurde neu initialisiert.")
+            except Exception as e:
+                print(f"Fehler bei der Initialisierung des Google AI Clients: {e}")
+                client = None
+                chat = None
+                if overlay and overlay.winfo_exists():
+                    messagebox.showerror("AI Client Fehler",
+                                         f"Konnte AI Client nicht initialisieren: {e}\nBitte API Key in den Einstellungen prüfen.")
+        else:
+            client = None
+            chat = None
+
+    if not initial_load:
+        if not api_key_changed and (chat_length_changed or open_links_setting_changed):
+            changed_parts = []
+            if chat_length_changed:
+                changed_parts.append("Chat Länge")
+            if open_links_setting_changed:
+                changed_parts.append("Automatisches Öffnen von Links")
+
+            if changed_parts:
+                messagebox.showinfo("Einstellungen aktualisiert",
+                                    f"{' und '.join(changed_parts)} wurde(n) aktualisiert. Die Änderungen sind jetzt aktiv.")
+        elif not api_key_changed and not chat_length_changed and not open_links_setting_changed:
+            messagebox.showinfo("Einstellungen aktualisiert",
+                                "Einstellungen wurden erfolgreich aktualisiert und angewendet.")
+
+update_globals_from_settings(current_app_settings, initial_load=True)
 
 recognizer = sr.Recognizer()
 mic = sr.Microphone()
@@ -93,299 +146,21 @@ mic = sr.Microphone()
 with mic as source:
     recognizer.adjust_for_ambient_noise(source)
 
-# Events
-speech_stop_event = Event()
+speech_stop_event = Event() # Wird hier definiert
 main_loop_stop_event = Event()
 
-# Globale Referenzen
 overlay = None
 main_loop_thread = None
 tray_icon = None
-settings_window_instance = None  # Für das Einstellungsfenster
 
-
-class ModernOverlay(tk.Tk):
-    def __init__(self):
-        super().__init__()
-        self.overrideredirect(True)
-        self.attributes('-topmost', True)
-        self.attributes('-alpha', 0.9)
-        self.config(bg='#0D1117')
-
-        self.corner_radius = 20
-        screen_width = self.winfo_screenwidth()
-        screen_height = self.winfo_screenheight()
-        width = 280
-        height = 80
-        x_pos = screen_width - width - 20
-        y_pos = screen_height - height - 50
-        self.geometry(f"{width}x{height}+{x_pos}+{y_pos}")
-
-        self.canvas = tk.Canvas(self, width=width, height=height, bg='#0D1117', highlightthickness=0)
-        self.canvas.pack(fill=tk.BOTH, expand=True)
-
-        self.canvas.create_rectangle(self.corner_radius, 0, width - self.corner_radius, height, fill='#0D1117',
-                                     outline='')
-        self.canvas.create_rectangle(0, self.corner_radius, width, height - self.corner_radius, fill='#0D1117',
-                                     outline='')
-        self.canvas.create_arc(0, 0, self.corner_radius * 2, self.corner_radius * 2, start=90, extent=90,
-                               fill='#0D1117', outline='')
-        self.canvas.create_arc(width - self.corner_radius * 2, 0, width, self.corner_radius * 2, start=0, extent=90,
-                               fill='#0D1117', outline='')
-        self.canvas.create_arc(0, height - self.corner_radius * 2, self.corner_radius * 2, height, start=180, extent=90,
-                               fill='#0D1117', outline='')
-        self.canvas.create_arc(width - self.corner_radius * 2, height - self.corner_radius * 2, width, height,
-                               start=270, extent=90, fill='#0D1117', outline='')
-
-        self.border = self.canvas.create_rectangle(2, 2, width - 2, height - 2, outline='#1E90FF', width=2)
-
-        self.mode = None
-        self.orb_size = 36
-        self.orb_x = 40
-        self.orb_y = height // 2
-
-        gradient = []
-        for i in range(100):
-            r = int(0 + (64 * i / 100))
-            g = int(170 + (50 * i / 100))
-            b = int(210 + (45 * i / 100))
-            gradient.append(f'#{r:02x}{g:02x}{b:02x}')
-        self.gradient = gradient
-
-        self.orb_id = self.canvas.create_oval(
-            self.orb_x - self.orb_size // 2, self.orb_y - self.orb_size // 2,
-            self.orb_x + self.orb_size // 2, self.orb_y + self.orb_size // 2,
-            fill='#10AFCF', width=0)
-        self.highlight_id = self.canvas.create_oval(
-            self.orb_x - self.orb_size // 3, self.orb_y - self.orb_size // 3,
-            self.orb_x - 2, self.orb_y - 2,
-            fill='white', width=0)
-
-        self.font = ("Segoe UI", 14, "bold")
-        self.text_id = self.canvas.create_text(
-            self.orb_x + self.orb_size // 2 + 20, height // 2,
-            anchor='w', text="", fill='#10DFFF', font=self.font)
-
-        self.particles = []
-        self.max_particles = 15
-        self.pulse_direction = 1
-        self.pulse_size = 0
-        self.pulse_speed = 0.05
-        self.pulse_max = 10
-        self.listening_speed = 0.05
-        self.speaking_speed = 0.12
-        self.particle_chance = 0.05
-
-        self.canvas.bind("<Button-1>", self.on_click)
-        self.withdraw()
-        self.after(20, self._animate)
-
-    def on_click(self, event):
-        if self.mode == 'speaking':
-            speech_stop_event.set()
-
-    def set_mode(self, mode):
-        if mode == self.mode:
-            return
-        self.mode = mode
-        if mode == 'listening':
-            self.canvas.itemconfig(self.orb_id, fill='#10EFCF')
-            self.canvas.itemconfig(self.text_id, text="Höre zu...", fill='#10EFCF')
-            self.canvas.itemconfig(self.border, outline='#10EFCF')
-            self.pulse_speed = self.listening_speed
-            self.particle_chance = 0.05
-            self.show()
-        elif mode == 'speaking':
-            self.canvas.itemconfig(self.orb_id, fill='#10AFCF')
-            self.canvas.itemconfig(self.text_id, text="Spreche...", fill='#10DFFF')
-            self.canvas.itemconfig(self.border, outline='#1E90FF')
-            self.pulse_speed = self.speaking_speed
-            self.particle_chance = 0.2
-            speech_stop_event.clear()
-            self.show()
-        else:
-            self.hide()
-        self.particles = []
-
-    def show(self):
-        if not self.winfo_viewable():
-            self.deiconify()
-
-    def hide(self):
-        if self.winfo_viewable():
-            self.withdraw()
-
-    def _create_particle(self):
-        if len(self.particles) >= self.max_particles: return
-        angle = np.random.uniform(0, 2 * np.pi)
-        speed = np.random.uniform(0.5, 2.0)
-        if self.mode == 'speaking': speed *= 1.5
-        size = np.random.uniform(2, 6)
-        distance = np.random.uniform(0, 10)
-        x = self.orb_x + distance * np.cos(angle)
-        y = self.orb_y + distance * np.sin(angle)
-        colors = ['#10AFCF', '#1E90FF', '#00CED1', '#48D1CC', '#20B2AA']
-        color = np.random.choice(colors)
-        particle = {
-            'id': self.canvas.create_oval(x - size / 2, y - size / 2, x + size / 2, y + size / 2, fill=color, width=0),
-            'dx': speed * np.cos(angle), 'dy': speed * np.sin(angle),
-            'ttl': np.random.uniform(10, 30), 'fade': np.random.uniform(0.92, 0.98)}
-        self.particles.append(particle)
-
-    def _update_particles(self):
-        particles_to_remove = []
-        for i, p in enumerate(self.particles):
-            self.canvas.move(p['id'], p['dx'], p['dy'])
-            p['ttl'] -= 1
-            if p['ttl'] <= 0:
-                particles_to_remove.append(i)
-                self.canvas.delete(p['id'])
-            else:
-                x1, y1, x2, y2 = self.canvas.coords(p['id'])
-                width, height = x2 - x1, y2 - y1
-                new_width, new_height = width * p['fade'], height * p['fade']
-                center_x, center_y = (x1 + x2) / 2, (y1 + y2) / 2
-                self.canvas.coords(p['id'], center_x - new_width / 2, center_y - new_height / 2,
-                                   center_x + new_width / 2, center_y + new_height / 2)
-        for i in sorted(particles_to_remove, reverse=True):
-            self.particles.pop(i)
-
-    def _animate(self):
-        self.pulse_size += self.pulse_speed * self.pulse_direction
-        if self.pulse_size > self.pulse_max or self.pulse_size < 0:
-            self.pulse_direction *= -1
-        size = self.orb_size + self.pulse_size
-        self.canvas.coords(self.orb_id, self.orb_x - size // 2, self.orb_y - size // 2,
-                           self.orb_x + size // 2, self.orb_y + size // 2)
-        highlight_size = size * 0.6
-        self.canvas.coords(self.highlight_id, self.orb_x - highlight_size // 2,
-                           self.orb_y - highlight_size // 2, self.orb_x, self.orb_y)
-
-        if self.mode == 'listening':
-            pulse_factor = abs(self.pulse_size / self.pulse_max)
-            color_idx = int(20 + pulse_factor * 30)
-            self.canvas.itemconfig(self.orb_id, fill=self.gradient[color_idx])
-            if np.random.random() < self.particle_chance: self._create_particle()
-        elif self.mode == 'speaking':
-            pulse_factor = abs(self.pulse_size / self.pulse_max)
-            color_idx = int(40 + pulse_factor * 50)
-            self.canvas.itemconfig(self.orb_id, fill=self.gradient[min(99, color_idx)])
-            if np.random.random() < self.particle_chance: self._create_particle()
-
-        self._update_particles()
-        self.after(20, self._animate)
-
-
-class SettingsWindow(tk.Toplevel):
-    def __init__(self, master=None):
-        super().__init__(master)
-        self.title("Manfred AI Einstellungen")
-        self.geometry("450x300")  # Angepasste Größe
-        self.transient(master)  # Bleibt über dem Hauptfenster (falls master gesetzt ist)
-        self.grab_set()  # Modal
-
-        self.config_vars = {}
-        self.current_config = load_config()
-
-        # Styling
-        style = ttk.Style(self)
-        style.configure("TLabel", padding=6)
-        style.configure("TEntry", padding=6)
-        style.configure("TButton", padding=6)
-
-        main_frame = ttk.Frame(self, padding="10 10 10 10")
-        main_frame.pack(expand=True, fill=tk.BOTH)
-
-        # API Key
-        ttk.Label(main_frame, text="Google AI API Key:").grid(row=0, column=0, sticky=tk.W)
-        self.config_vars["api_key"] = tk.StringVar(value=self.current_config.get("api_key"))
-        ttk.Entry(main_frame, textvariable=self.config_vars["api_key"], width=40).grid(row=0, column=1, sticky=tk.EW)
-
-        # Codeword
-        ttk.Label(main_frame, text="Codeword:").grid(row=1, column=0, sticky=tk.W)
-        self.config_vars["codeword"] = tk.StringVar(value=self.current_config.get("codeword"))
-        ttk.Entry(main_frame, textvariable=self.config_vars["codeword"], width=40).grid(row=1, column=1, sticky=tk.EW)
-
-        # Stopwords (als Komma-separierter String)
-        ttk.Label(main_frame, text="Stopwords (Komma-getrennt):").grid(row=2, column=0, sticky=tk.W)
-        stopwords_str = ", ".join(self.current_config.get("stopwords", []))
-        self.config_vars["stopwords"] = tk.StringVar(value=stopwords_str)
-        ttk.Entry(main_frame, textvariable=self.config_vars["stopwords"], width=40).grid(row=2, column=1, sticky=tk.EW)
-
-        # Max History
-        ttk.Label(main_frame, text="Max. Chat Verlauf:").grid(row=3, column=0, sticky=tk.W)
-        self.config_vars["max_history"] = tk.IntVar(value=self.current_config.get("max_history"))
-        ttk.Entry(main_frame, textvariable=self.config_vars["max_history"], width=10).grid(row=3, column=1,
-                                                                                           sticky=tk.W)  # sticky W für linksbündig
-
-        # Buttons Frame
-        button_frame = ttk.Frame(main_frame)
-        button_frame.grid(row=4, column=0, columnspan=2, pady=20, sticky=tk.E)
-
-        ttk.Button(button_frame, text="Speichern", command=self.save_settings_action).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="Abbrechen", command=self.destroy).pack(side=tk.LEFT, padx=5)
-
-        main_frame.columnconfigure(1, weight=1)  # Spalte 1 soll sich ausdehnen
-
-        self.protocol("WM_DELETE_WINDOW", self.destroy)  # Handle Schließen über X
-
-    def save_settings_action(self):
-        global CodeWord, StopWords, MAX_HISTORY, API_KEY, client, chat, chat_config, app_config
-
-        new_config = {}
-        new_config["api_key"] = self.config_vars["api_key"].get()
-        new_config["codeword"] = self.config_vars["codeword"].get()
-
-        stopwords_str = self.config_vars["stopwords"].get()
-        new_config["stopwords"] = [s.strip() for s in stopwords_str.split(',') if s.strip()]
-
-        try:
-            new_config["max_history"] = int(self.config_vars["max_history"].get())
-            if new_config["max_history"] < 1:
-                messagebox.showerror("Fehler", "Max. Chat Verlauf muss mindestens 1 sein.")
-                return
-        except ValueError:
-            messagebox.showerror("Fehler", "Max. Chat Verlauf muss eine Zahl sein.")
-            return
-
-        save_config(new_config)
-        app_config = new_config  # Update laufende Konfiguration
-
-        # Einige Einstellungen direkt anwenden (andere erfordern Neustart)
-        CodeWord = new_config["codeword"]
-        StopWords = new_config["stopwords"]
-
-        restart_needed = False
-        if MAX_HISTORY != new_config["max_history"]:
-            MAX_HISTORY = new_config["max_history"]
-            restart_needed = True  # Chat muss neu initialisiert werden
-
-        if API_KEY != new_config["api_key"]:
-            API_KEY = new_config["api_key"]
-            restart_needed = True  # Client und Chat müssen neu initialisiert werden
-
-        if restart_needed:
-            messagebox.showinfo("Einstellungen gespeichert",
-                                "Einstellungen wurden gespeichert. Einige Änderungen (API Key, Max. Verlauf) erfordern einen Neustart der Anwendung, um wirksam zu werden.")
-            # Optional: Client und Chat neu initialisieren, wenn möglich und gewünscht
-            # try:
-            #     client = gai.Client(api_key=API_KEY)
-            #     chat = client.chats.create(model="gemini-2.0-flash", config=chat_config) # chat_config bleibt gleich
-            #     print("AI Client und Chat wurden mit neuem API Key / Verlaufseinstellungen neu initialisiert.")
-            # except Exception as e:
-            #     print(f"Fehler bei der Reinitialisierung des AI Clients: {e}")
-            #     messagebox.showerror("Fehler", "Konnte AI Client nicht mit neuem API Key initialisieren. Bitte manuell neu starten.")
-        else:
-            messagebox.showinfo("Einstellungen gespeichert",
-                                "Einstellungen wurden erfolgreich gespeichert und angewendet.")
-
-        self.destroy()
-
+# --- ModernOverlay Klasse wurde entfernt ---
 
 def set_overlay_mode_safe(mode):
     if overlay:
         overlay.after(0, lambda: overlay.set_mode(mode))
 
+# ... (Rest von speak_action, main_loop_logic, generate_mp3, trim_chat_history, Tray Icon Functions unverändert) ...
+# ... (Stelle sicher, dass die Funktionen, die overlay verwenden, weiterhin korrekt sind) ...
 
 def speak_action():
     set_overlay_mode_safe('speaking')
@@ -411,11 +186,6 @@ def speak_action():
 
         if speech_stop_event.is_set() or main_loop_stop_event.is_set():
             print("Sprachausgabe abgebrochen oder Hauptschleife gestoppt.")
-            try:
-                if os.name == 'nt':
-                    playsound._playsoundWin.winCommand('stop', temp_audio_file)
-            except Exception as e:
-                print(f"Konnte Sound nicht stoppen (normal bei Abbruch): {e}")
 
         sound_thread.join(timeout=1.0)
 
@@ -427,7 +197,7 @@ def speak_action():
                 try:
                     os.remove(temp_audio_file)
                 except Exception as e:
-                    print(f"Konnte temp_audio_file nicht löschen: {e}")
+                    print(f"Konnte temp_audio_file nach Wartezeit nicht löschen: {e}")
             except Exception as e:
                 print(f"Fehler beim Löschen von {temp_audio_file}: {e}")
 
@@ -442,12 +212,22 @@ def speak_action():
 
 
 def main_loop_logic():
-    global chat, CodeWord, StopWords  # Stelle sicher, dass globale Variablen verwendet werden
+    global chat, CodeWord, StopWords, client, OPEN_LINKS_AUTOMATICALLY
+
+    if not client or not chat:
+        print("AI Client nicht initialisiert. Überprüfe API Key in den Einstellungen.")
+
     pygame.mixer.music.load("sounds/start.mp3")
     pygame.mixer.music.play()
     listening_mode = False
 
     while not main_loop_stop_event.is_set():
+        if not client or not chat:
+            if not main_loop_stop_event.is_set():
+                print("Warte auf AI Client Initialisierung (API Key prüfen)...")
+            time.sleep(5)
+            continue
+
         if listening_mode:
             set_overlay_mode_safe('listening')
         else:
@@ -472,7 +252,7 @@ def main_loop_logic():
             text_lower = text.lower()
 
             if not listening_mode:
-                if CodeWord.lower() in text_lower:  # Verwende aktuelle CodeWord Variable
+                if CodeWord.lower() in text_lower:
                     listening_mode = True
                     command = text_lower.split(CodeWord.lower(), 1)[-1].strip()
                     if not command:
@@ -485,7 +265,12 @@ def main_loop_logic():
                 else:
                     continue
             else:
-                if any(stop_word.lower() in text_lower for stop_word in StopWords):  # Verwende aktuelle StopWords
+                is_stop_command = False
+                for stop_word in StopWords:
+                    if stop_word.lower() in text_lower:
+                        is_stop_command = True
+                        break
+                if is_stop_command:
                     listening_mode = False
                     print("Modus deaktiviert (durch Stopword).")
                     set_overlay_mode_safe(None)
@@ -503,25 +288,30 @@ def main_loop_logic():
             response = chat.send_message(command)
             print(f"Antwort: {response.text}")
 
+            response_text_for_tts = response.text
+
             url_pattern = r'(https?://[^\s]+|www\.[^\s]+)'
             match = re.search(url_pattern, response.text)
-            response_text_for_tts = response.text
 
             if match:
                 url = match.group(0)
-                if not url.startswith("http"):
-                    url = "http://" + url
-                print(f"Öffne Link aus Antwort: {url}")
-                webbrowser.open(url)
-                response_text_for_tts = re.sub(url_pattern, '', response.text).strip()
-                if not response_text_for_tts:
-                    response_text_for_tts = "Link geöffnet."
+                if OPEN_LINKS_AUTOMATICALLY:
+                    if not url.startswith("http"):
+                        url = "https://" + url
+                    print(f"Öffne Link aus Antwort (Einstellung): {url}")
+                    webbrowser.open(url)
+                    response_text_for_tts = re.sub(url_pattern, '', response.text).strip()
+                    if not response_text_for_tts:
+                        response_text_for_tts = "Link geöffnet."
+                else:
+                    print(f"Link gefunden, wird vorgelesen (nicht geöffnet gemäß Einstellung): {url}")
 
             if response_text_for_tts:
                 asyncio.run(generate_mp3(response_text_for_tts))
                 speak_action()
             else:
-                set_overlay_mode_safe('listening')
+                if listening_mode and not main_loop_stop_event.is_set():
+                    set_overlay_mode_safe('listening')
 
             chat = trim_chat_history(chat)
 
@@ -531,6 +321,10 @@ def main_loop_logic():
         except sr.RequestError as e:
             print(f"Fehler bei der Spracherkennung: {e}")
             asyncio.run(generate_mp3("Problem mit der Spracherkennung."))
+            speak_action()
+        except types.StopCandidateException as e:
+            print(f"Antwort von AI gestoppt: {e}")
+            asyncio.run(generate_mp3("Meine Antwort wurde aufgrund von Sicherheitsrichtlinien blockiert."))
             speak_action()
         except Exception as e:
             print(f"Ein Fehler in der Hauptschleife: {e}")
@@ -550,13 +344,14 @@ async def generate_mp3(text):
         text = "Verstanden."
 
     communicate = Communicate(text=text, voice="de-DE-ConradNeural")
-    for _ in range(3):
+
+    for attempt in range(3):
         try:
             if os.path.exists("reply.mp3"):
                 os.remove("reply.mp3")
             break
         except PermissionError:
-            print("reply.mp3 ist noch in Benutzung, versuche es erneut...")
+            print(f"reply.mp3 ist noch in Benutzung, Versuch {attempt + 1}/3...")
             await asyncio.sleep(0.2)
         except FileNotFoundError:
             break
@@ -567,7 +362,6 @@ async def generate_mp3(text):
         print("Konnte reply.mp3 nach mehreren Versuchen nicht löschen. Speichere als reply_new.mp3")
         try:
             await communicate.save("reply_new.mp3")
-            return
         except Exception as save_err:
             print(f"Konnte MP3 auch als reply_new.mp3 nicht speichern: {save_err}")
             return
@@ -578,22 +372,27 @@ async def generate_mp3(text):
         print(f"Fehler beim Speichern von reply.mp3: {e}")
 
 
-def trim_chat_history(current_chat):
-    global MAX_HISTORY  # Stelle sicher, dass die globale Variable verwendet wird
-    history = current_chat.get_history()
-    if len(history) > MAX_HISTORY * 2:  # Verwende aktuelle MAX_HISTORY
-        trimmed_history = history[-(MAX_HISTORY * 2):]
-        new_chat = client.chats.create(
-            model="gemini-2.0-flash",
-            config=current_chat._config,
-            history=trimmed_history
-        )
-        print(f"Chat-Verlauf gekürzt. Alte Länge: {len(history)}, Neue Länge: {len(trimmed_history)}")
-        return new_chat
-    return current_chat
+def trim_chat_history(current_chat_session):
+    global MAX_HISTORY, client, chat_config
+    if not current_chat_session or not client:
+        return current_chat_session
+
+    try:
+        history = current_chat_session.get_history()
+        if len(history) > MAX_HISTORY * 2:
+            trimmed_history = history[-(MAX_HISTORY * 2):]
+            new_chat_session = client.chats.create(
+                model="gemini-2.0-flash",
+                config=chat_config,
+                history=trimmed_history
+            )
+            print(f"Chat-Verlauf gekürzt. Alte Länge: {len(history)}, Neue Länge: {len(trimmed_history)}")
+            return new_chat_session
+    except Exception as e:
+        print(f"Fehler beim Kürzen des Chat-Verlaufs: {e}")
+    return current_chat_session
 
 
-# --- Tray Icon Functions ---
 def create_image(width, height, color1, color2):
     image = Image.new('RGB', (width, height), color1)
     dc = ImageDraw.Draw(image)
@@ -603,30 +402,43 @@ def create_image(width, height, color1, color2):
 
 
 def get_icon_image():
-    icon_path = "icon.png"
+    icon_path = "icon.ico"
     if os.path.exists(icon_path):
         try:
             return Image.open(icon_path)
         except Exception as e:
-            print(f"Konnte icon.png nicht laden: {e}. Benutze Standard-Icon.")
+            print(f"Konnte {icon_path} nicht laden: {e}. Benutze Standard-Icon.")
+    icon_path_png = "icon.png"
+    if os.path.exists(icon_path_png):
+        try:
+            return Image.open(icon_path_png)
+        except Exception as e:
+            print(f"Konnte auch icon.png nicht laden: {e}. Benutze generiertes Icon.")
     return create_image(64, 64, 'black', 'blue')
 
 
 def on_settings_clicked(icon_instance, item_instance):
-    global settings_window_instance, overlay
-    if settings_window_instance is None or not settings_window_instance.winfo_exists():
-        # Stelle sicher, dass das Overlay (als potenzieller Master) existiert, bevor das Einstellungsfenster erstellt wird
-        if overlay:
-            settings_window_instance = SettingsWindow(master=overlay)  # oder master=None, wenn kein Hauptfensterbezug
-            settings_window_instance.lift()
-            settings_window_instance.focus_force()  # Versuche, den Fokus zu erzwingen
-        else:
-            print("Overlay nicht initialisiert, kann Einstellungsfenster nicht öffnen.")
-            messagebox.showwarning("Fehler",
-                                   "Overlay ist nicht bereit. Einstellungsfenster kann nicht geöffnet werden.")
-    else:
-        settings_window_instance.lift()
-        settings_window_instance.focus_force()
+    global overlay
+
+    active_settings_toplevel = None
+    if overlay:
+        for child_window in overlay.winfo_children():
+            if isinstance(child_window, tk.Toplevel) and child_window.title() == "Bot Settings":
+                active_settings_toplevel = child_window
+                break
+
+    if active_settings_toplevel and active_settings_toplevel.winfo_exists():
+        active_settings_toplevel.lift()
+        active_settings_toplevel.focus_force()
+        return
+
+    settings_top_level = tk.Toplevel(overlay)
+    _settings_app_instance = ModernSettingsApp(settings_top_level)
+    overlay.wait_window(settings_top_level)
+
+    print("Einstellungsfenster geschlossen. Lade Konfiguration neu und wende an.")
+    newly_loaded_settings = app_load_settings()
+    update_globals_from_settings(newly_loaded_settings)
 
 
 def on_exit_clicked(icon_instance, item_instance):
@@ -646,11 +458,16 @@ def on_exit_clicked(icon_instance, item_instance):
 
 
 if __name__ == "__main__":
-    overlay = ModernOverlay()
+    if not API_KEY and not os.getenv("GEMINI_API_KEY"):
+        messagebox.showwarning("API Key fehlt",
+                               "Der Google AI API Key ist nicht in settings.json oder als Umgebungsvariable GEMINI_API_KEY konfiguriert. Die AI-Funktionalität ist eingeschränkt. Bitte in den Einstellungen konfigurieren.")
+
+    # speech_stop_event ist bereits global definiert
+    overlay = ModernOverlay(speech_stop_event) # <<< HIER WIRD DAS EVENT ÜBERGEBEN
 
     tray_icon_image = get_icon_image()
     menu = (
-        item('Einstellungen', on_settings_clicked),  # Neuer Menüpunkt
+        item('Einstellungen', on_settings_clicked),
         item('Beenden', on_exit_clicked),
     )
     tray_icon = icon("ManfredAI", tray_icon_image, "Manfred AI", menu)
@@ -660,14 +477,15 @@ if __name__ == "__main__":
     main_loop_thread.start()
     print("Main-Loop-Thread gestartet.")
 
-    tray_icon.run_detached()
-    print("Manfred AI Tray-Anwendung gestartet (detached). Rechtsklick auf das Icon für Optionen.")
+    tray_thread = Thread(target=tray_icon.run, daemon=True)
+    tray_thread.start()
+    print("Manfred AI Tray-Anwendung gestartet. Rechtsklick auf das Icon für Optionen.")
 
     try:
         overlay.mainloop()
     except KeyboardInterrupt:
         print("KeyboardInterrupt empfangen, beende Anwendung...")
-        on_exit_clicked(tray_icon, None)
+        on_exit_clicked(tray_icon, None) # type: ignore
 
     print("Tkinter mainloop beendet.")
 
@@ -677,6 +495,16 @@ if __name__ == "__main__":
         if main_loop_thread.is_alive():
             print("Main-Loop-Thread konnte nicht sauber beendet werden.")
 
+    if tray_icon and hasattr(tray_icon, 'visible') and tray_icon.visible: # type: ignore
+        tray_icon.stop() # type: ignore
+
+    if tray_thread and tray_thread.is_alive():
+        print("Warte auf Tray-Icon-Thread...")
+        tray_thread.join(timeout=2)
+        if tray_thread.is_alive():
+            print("Tray-Icon-Thread konnte nicht sauber beendet werden.")
+
     pygame.mixer.quit()
     print("Pygame Mixer beendet.")
     print("Anwendung wird vollständig beendet.")
+    sys.exit()
