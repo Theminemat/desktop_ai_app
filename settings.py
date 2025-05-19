@@ -9,9 +9,9 @@ SETTINGS_FILE = "settings.json"
 
 # Default settings if file is missing or invalid
 default_settings = {
-    "api_key": "",
-    "chat_length": 10,
-    "activation_word": "heybot",
+    "api_key": "Enter your Gemini API key here",
+    "chat_length": 5,
+    "activation_word": "Manfred",
     "stop_words": ["stop", "exit", "quit"]
 }
 

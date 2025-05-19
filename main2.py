@@ -708,4 +708,4 @@ if __name__ == "__main__":
     pygame.mixer.quit()
     print("Pygame Mixer beendet.")
     print("Anwendung wird vollständig beendet.")
-    sys.exit()  # Ensure application exits cleanly
+    sys.exit()
