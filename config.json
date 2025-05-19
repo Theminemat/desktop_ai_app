@@ -1,6 +1,0 @@
-{
-    "api_key": "DEIN_GOOGLE_AI_API_KEY_HIER_EINFUEGEN",
-    "codeword": "manfred",
-    "stopwords": ["stopp", "stop"],
-    "max_history": 5
-}
