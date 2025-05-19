@@ -96,9 +96,11 @@
     "could_not_find_voice_id_error": "Impossible de trouver l'ID de la voix sélectionnée.",
     "api_key_invalid_error_title": "Clé API invalide",
     "api_key_invalid_error_message": "La clé API configurée est invalide ou a expiré. Veuillez la mettre à jour dans les Paramètres (clic droit sur l'icône de la barre d'état système).",
-    "ai_client_error_message_generic": "Une erreur de service IA s'est produite. Veuillez vérifier votre connexion ou vos paramètres.",
+    "ai_client_error_message_generic": "Une erreur de service IA s'est produite. Veuillez vérifier votre connexion et vous assurer que vous utilisez une clé API valide dans les paramètres.",
     "unexpected_error_speech": "Une erreur inattendue s'est produite.",
     "tts_language_label": "Langue TTS :",
     "tts_preview_button": "Aperçu",
-    "tts_preview_text": "Ceci est un test de la voix sélectionnée."
+    "tts_preview_text": "Ceci est un test de la voix sélectionnée.",
+    "yes_button_text": "Oui",
+    "no_button_text": "Non"
 }

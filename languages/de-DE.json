@@ -96,9 +96,11 @@
     "could_not_find_voice_id_error": "Die ID für die ausgewählte Stimme konnte nicht gefunden werden.",
     "api_key_invalid_error_title": "Ungültiger API-Schlüssel",
     "api_key_invalid_error_message": "Der konfigurierte API-Schlüssel ist ungültig oder abgelaufen. Bitte aktualisieren Sie ihn in den Einstellungen (Rechtsklick auf das Tray-Icon).",
-    "ai_client_error_message_generic": "Ein Fehler beim KI-Dienst ist aufgetreten. Bitte überprüfen Sie Ihre Verbindung oder Einstellungen.",
+    "ai_client_error_message_generic": "Ein Fehler beim KI-Dienst ist aufgetreten. Bitte überprüfen Sie Ihre Verbindung und stellen Sie sicher, dass Sie einen gültigen API-Schlüssel in den Einstellungen verwenden.",
     "unexpected_error_speech": "Ein unerwarteter Fehler ist aufgetreten.",
     "tts_language_label": "TTS-Sprache:",
     "tts_preview_button": "Vorschau",
-    "tts_preview_text": "Dies ist ein Test der ausgewählten Stimme."
+    "tts_preview_text": "Dies ist ein Test der ausgewählten Stimme.",
+    "yes_button_text": "Ja",
+    "no_button_text": "Nein"
 }

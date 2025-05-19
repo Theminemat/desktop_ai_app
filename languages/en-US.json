@@ -96,7 +96,7 @@
     "could_not_find_voice_id_error": "Could not find the ID for the selected voice.",
     "api_key_invalid_error_title": "Invalid API Key",
     "api_key_invalid_error_message": "The configured API key is invalid or has expired. Please update it in Settings (right-click the tray icon).",
-    "ai_client_error_message_generic": "An AI service error occurred. Please check your connection or settings.",
+    "ai_client_error_message_generic": "An AI service error occurred. Please check your connection and make sure you're using a valid API key in the settings.",
     "unexpected_error_speech": "An unexpected error occurred.",
     "tts_preview_button": "Preview",
     "tts_preview_text": "This is a test of the selected voice."
