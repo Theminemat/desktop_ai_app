@@ -2,10 +2,10 @@
 import asyncio
 import os
 import re
-import playsound
+# import playsound # Not used, can be removed if not planned for future
 import webbrowser
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox # Removed scrolledtext, deque
 from threading import Thread, Event
 from edge_tts import Communicate
 from google import genai as gai
@@ -18,24 +18,23 @@ import sys
 from pystray import MenuItem as item, Icon as icon
 from PIL import Image, ImageDraw
 import speech_recognition as sr
+# from collections import deque # No longer needed here
 
 try:
     from settings import (
         load_settings as app_load_settings,
         ModernSettingsApp,
         default_settings as app_default_settings,
-        # load_system_prompts, # Removed from here
-        # get_full_system_prompt, # Removed from here
-        DEFAULT_SYSTEM_PROMPT_NAME, # Still needed from settings for defaults
-        DEFAULT_SYSTEM_PROMPT_TEXT, # Needed for agent_get_full_system_prompt
+        DEFAULT_SYSTEM_PROMPT_NAME,
+        DEFAULT_SYSTEM_PROMPT_TEXT,
         LanguageManager
     )
-    from agent_builder import ( # New import for these
+    from agent_builder import (
         load_system_prompts as agent_load_system_prompts,
         get_full_system_prompt as agent_get_full_system_prompt
     )
 except ImportError as e:
-    # Basic error handling for missing critical files
+    # This messagebox might appear before console redirection if settings/agent_builder fails
     if 'settings' in str(e).lower():
         messagebox.showerror("Error", "settings.py could not be found or imported.")
     elif 'agent_builder' in str(e).lower():
@@ -50,16 +49,29 @@ except ImportError:
     messagebox.showerror("Error", "overlay.py could not be found or imported.")
     sys.exit(1)
 
+# --- Console Output Redirection (Import and Initialize) ---
+try:
+    from console import init_output_redirection, show_console_window as show_console_window_external, get_console_window_instance
+    init_output_redirection() # Initialize redirection as early as possible
+except ImportError as e:
+    messagebox.showerror("Error", f"console.py could not be found or imported: {e}")
+    # No console redirection possible, but try to continue if other critical files loaded.
+    # Define dummy functions so the rest of the app doesn't crash immediately if console is missing
+    def init_output_redirection(): print("CRITICAL: Console redirection FAILED.")
+    def show_console_window_external(overlay, lm): messagebox.showerror("Error", "Console module failed to load.")
+    def get_console_window_instance(): return None
+    init_output_redirection() # Call dummy to print the error
+# --- End Console Output Redirection ---
+
 
 try:
     pygame.mixer.init()
 except pygame.error as e:
-    print(f"Initial Pygame mixer init failed: {e}. Audio output may not work.")
+    print(f"Initial Pygame mixer init failed: {e}. Audio output may not work.") # This print will be captured
 
 # --- Global Variables ---
-current_app_settings = app_load_settings()
-lm_main = LanguageManager(current_app_settings.get("ui_language", app_default_settings["ui_language"]))
-# Load system prompts using the new function, passing necessary defaults from settings.py
+current_app_settings = app_load_settings() # This may print, will be captured
+lm_main = LanguageManager(current_app_settings.get("ui_language", app_default_settings["ui_language"])) # This may print
 all_system_prompts = agent_load_system_prompts(DEFAULT_SYSTEM_PROMPT_NAME, DEFAULT_SYSTEM_PROMPT_TEXT)
 
 
@@ -68,7 +80,7 @@ StopWords = []
 MAX_HISTORY = 0
 API_KEY = ""
 OPEN_LINKS_AUTOMATICALLY = True
-ACTIVE_SYSTEM_PROMPT_NAME = DEFAULT_SYSTEM_PROMPT_NAME # Initialized with default from settings
+ACTIVE_SYSTEM_PROMPT_NAME = DEFAULT_SYSTEM_PROMPT_NAME
 TTS_VOICE = app_default_settings["tts_voice"]
 STT_LANGUAGE = "en-US"
 SELECTED_MIC_NAME = app_default_settings["selected_microphone"]
@@ -87,9 +99,16 @@ main_loop_thread = None
 tray_icon = None
 
 
+# --- Console Window UI (Moved to console.py) ---
+# class ConsoleWindow(tk.Toplevel): ...
+# def show_console_window(): ...
+# --- End Console Window UI ---
+
+
 # --- Utility Functions ---
 def show_error_dialog(title_key: str, message_key: str, parent=None, **format_args):
     global lm_main, overlay
+    # lm_main should be initialized by now
 
     title = lm_main.get_string(title_key, default_text="Error")
     message_text = lm_main.get_string(message_key, default_text="An error occurred: {e}", **format_args)
@@ -97,6 +116,12 @@ def show_error_dialog(title_key: str, message_key: str, parent=None, **format_ar
     if parent is None:
         if overlay and overlay.winfo_exists():
             parent = overlay
+        else:
+            # Try to get console window instance from the console module
+            console_instance = get_console_window_instance()
+            if console_instance and console_instance.winfo_exists():
+                parent = console_instance
+            # If still no parent, messagebox will use default root or be standalone
 
     messagebox.showerror(title, message_text, parent=parent)
 
@@ -107,7 +132,7 @@ def initialize_audio_devices():
 
     # Speaker (Pygame Mixer)
     try:
-        current_mixer_device = None
+        # current_mixer_device = None # Not used
         if pygame.mixer.get_init():
             pygame.mixer.quit()
             print("Pygame mixer quit for re-initialization.")
@@ -143,13 +168,15 @@ def initialize_audio_devices():
                 print(f"Using microphone: {SELECTED_MIC_NAME} (Index: {mic_index})")
             else:
                 print(f"Microphone '{SELECTED_MIC_NAME}' not found in list. Using system default.")
-                SELECTED_MIC_NAME = "System Default"
+                SELECTED_MIC_NAME = "System Default" # Fallback
         except Exception as e:
             print(f"Error listing or finding microphones: {e}. Using system default.")
-            SELECTED_MIC_NAME = "System Default"
+            SELECTED_MIC_NAME = "System Default" # Fallback
 
+    # Re-assign to default if it was forced by error above
     if SELECTED_MIC_NAME == "System Default":
         print("Using system default microphone.")
+        mic_index = None # Ensure mic_index is None for default
 
     try:
         mic = sr.Microphone(device_index=mic_index)
@@ -162,10 +189,11 @@ def initialize_audio_devices():
         show_error_dialog("error_title",
                           "microphone_init_failed_error",
                           e=str(e))
-        try:
-            mic = sr.Microphone()
+        try: # Fallback to truly default microphone
+            mic = sr.Microphone() # No device_index
             with mic as source:
                 recognizer.adjust_for_ambient_noise(source, duration=0.5)
+            print("Successfully initialized with truly default microphone after error.")
         except Exception as e_fallback_mic:
             print(f"Fallback microphone initialization also failed: {e_fallback_mic}")
             mic = None
@@ -180,7 +208,7 @@ def update_globals_from_settings(loaded_settings, initial_load=False):
     old_api_key = current_app_settings.get("api_key") if not initial_load else None
     old_chat_length = current_app_settings.get("chat_length") if not initial_load else None
     old_open_links = current_app_settings.get("open_links_automatically", app_default_settings[
-        "open_links_automatically"]) if not initial_load else False
+        "open_links_automatically"]) if not initial_load else False # Default to bool
     old_active_prompt_name = current_app_settings.get("active_system_prompt_name") if not initial_load else None
     old_ui_language = current_app_settings.get("ui_language") if not initial_load else None
     old_tts_voice = current_app_settings.get("tts_voice") if not initial_load else None
@@ -194,7 +222,7 @@ def update_globals_from_settings(loaded_settings, initial_load=False):
 
     new_ui_language = current_app_settings.get("ui_language", app_default_settings["ui_language"])
     if initial_load or old_ui_language != new_ui_language:
-        lm_main.set_language(new_ui_language)
+        lm_main.set_language(new_ui_language) # lm_main is already initialized
 
     CodeWord = current_app_settings.get("activation_word", app_default_settings["activation_word"])
     StopWords = current_app_settings.get("stop_words", app_default_settings["stop_words"])
@@ -215,7 +243,7 @@ def update_globals_from_settings(loaded_settings, initial_load=False):
                 STT_LANGUAGE = f"{stt_lang_parts[0]}-{stt_lang_parts[1]}"
                 print(f"STT language set to: {STT_LANGUAGE} (derived from TTS voice: {TTS_VOICE})")
             else:
-                STT_LANGUAGE = "en-US";
+                STT_LANGUAGE = "en-US"; # Semicolon is not pythonic, but okay
                 print(f"Warning: Could not parse TTS voice '{TTS_VOICE}'. Defaulting STT to en-US.")
         except Exception as e:
             STT_LANGUAGE = "en-US";
@@ -233,7 +261,7 @@ def update_globals_from_settings(loaded_settings, initial_load=False):
     if not API_KEY or API_KEY == app_default_settings["api_key"]:
         print("WARNING: API key not configured or is placeholder.")
         if initial_load or (old_api_key and old_api_key != app_default_settings["api_key"]):
-            if overlay and overlay.winfo_exists():
+            if overlay and overlay.winfo_exists(): # Check overlay before showing messagebox
                 messagebox.showwarning(
                     lm_main.get_string("api_key_not_configured_warning_title"),
                     lm_main.get_string("api_key_not_configured_warning_message"),
@@ -254,7 +282,7 @@ def update_globals_from_settings(loaded_settings, initial_load=False):
     else:
         chat_config.system_instruction = current_system_instruction
 
-    api_key_changed = (old_api_key != API_KEY) and not env_api_key
+    api_key_changed = (old_api_key != API_KEY) and not env_api_key # Only consider settings API key change if no ENV override
     system_prompt_changed = (old_active_prompt_name != ACTIVE_SYSTEM_PROMPT_NAME) or \
                             (old_system_instruction_from_config != current_system_instruction)
 
@@ -263,19 +291,20 @@ def update_globals_from_settings(loaded_settings, initial_load=False):
 
     if mic_changed or speaker_changed:
         initialize_audio_devices()
-        if not initial_load:
+        if not initial_load: # Only show message if not the first load
             changed_audio_parts = []
             if mic_changed: changed_audio_parts.append(
                 lm_main.get_string("microphone_label", default_text="Microphone").replace(":", ""))
             if speaker_changed: changed_audio_parts.append(
                 lm_main.get_string("speaker_label", default_text="Speaker").replace(":", ""))
-            messagebox.showinfo(
-                lm_main.get_string("settings_updated_title"),
-                lm_main.get_string("audio_devices_updated_message",
-                                   default_text="Audio device settings updated: {devices}. Speech input/output reinitialized.",
-                                   devices=", ".join(changed_audio_parts)),
-                parent=overlay if overlay and overlay.winfo_exists() else None
-            )
+            if overlay and overlay.winfo_exists(): # Check overlay before showing messagebox
+                messagebox.showinfo(
+                    lm_main.get_string("settings_updated_title"),
+                    lm_main.get_string("audio_devices_updated_message",
+                                       default_text="Audio device settings updated: {devices}. Speech input/output reinitialized.",
+                                       devices=", ".join(changed_audio_parts)),
+                    parent=overlay
+                )
 
     if initial_load or api_key_changed or system_prompt_changed:
         if API_KEY and API_KEY != app_default_settings["api_key"]:
@@ -289,15 +318,16 @@ def update_globals_from_settings(loaded_settings, initial_load=False):
                         print(f"Could not preserve chat history: {e}.")
                 chat = client.chats.create(model="gemini-1.5-flash", config=chat_config, history=current_history)
                 print("AI Client and Chat initialized/updated.")
-                if not initial_load:
+                if not initial_load: # Only show message if not the first load
                     msg_key = "settings_updated_reinit_api_key" if api_key_changed else "settings_updated_reinit_system_prompt"
-                    messagebox.showinfo(lm_main.get_string("settings_updated_title"), lm_main.get_string(msg_key),
-                                        parent=overlay if overlay and overlay.winfo_exists() else None)
+                    if overlay and overlay.winfo_exists(): # Check overlay
+                        messagebox.showinfo(lm_main.get_string("settings_updated_title"), lm_main.get_string(msg_key),
+                                            parent=overlay)
             except Exception as e:
                 print(f"Error initializing Google AI Client: {e}");
                 client = None;
                 chat = None
-                if overlay and overlay.winfo_exists():
+                if overlay and overlay.winfo_exists(): # Check overlay
                     show_error_dialog("ai_client_error_title",
                                       "ai_client_error_message",
                                       parent=overlay,
@@ -312,20 +342,18 @@ def update_globals_from_settings(loaded_settings, initial_load=False):
         if old_open_links != OPEN_LINKS_AUTOMATICALLY: changed_parts.append(
             lm_main.get_string("open_links_label").replace(":", ""))
         if tts_voice_changed: changed_parts.append(lm_main.get_string("tts_voice_label").replace(":", ""))
-        # Note: UI language change is handled differently, often requiring restart or re-init of UI parts.
-        # Here we only show a message if other non-reinitializing settings changed.
+        # UI language change is handled by ModernSettingsApp itself with a direct message.
 
         if changed_parts:
-            messagebox.showinfo(lm_main.get_string("settings_updated_title"),
-                                lm_main.get_string("settings_updated_applied_changes",
-                                                   changed_parts=", ".join(changed_parts)),
-                                parent=overlay if overlay and overlay.winfo_exists() else None)
-        elif old_ui_language == new_ui_language: # No relevant change and UI lang same
-            # No message needed if only UI language changed and it was handled, or no changes at all.
-            pass
+            if overlay and overlay.winfo_exists(): # Check overlay
+                messagebox.showinfo(lm_main.get_string("settings_updated_title"),
+                                    lm_main.get_string("settings_updated_applied_changes",
+                                                       changed_parts=", ".join(changed_parts)),
+                                    parent=overlay)
+        # No 'else if old_ui_language == new_ui_language' needed here, as UI lang change message is separate.
 
 
-update_globals_from_settings(current_app_settings, initial_load=True)
+update_globals_from_settings(current_app_settings, initial_load=True) # This will print through redirector
 
 def set_overlay_mode_safe(mode):
     if overlay and overlay.winfo_exists():
@@ -455,7 +483,7 @@ def main_loop_logic():
                 else: # It's a command
                     command = text.strip()
 
-            if not command: print("No usable command."); continue # Should be caught by earlier logic if only activation word
+            if not command: print("No usable command."); continue
             print(f"Command recognized: {command}")
 
             response = chat.send_message(command)
@@ -476,25 +504,25 @@ def main_loop_logic():
                     except Exception as e:
                         print(f"Failed to open link {url}: {e}")
                         response_text_for_tts = lm_main.get_string("failed_to_open_link_speech", default_text="Failed to open link.")
-                        asyncio.run(generate_mp3(response_text_for_tts)); speak_action(); continue # Speak failure and loop
+                        asyncio.run(generate_mp3(response_text_for_tts)); speak_action(); continue
                 else: # Not opening automatically
                     print(f"Link found (not opened): {url}")
 
             if response_text_for_tts:
-                await_task = asyncio.run(generate_mp3(response_text_for_tts)) # Ensure this runs and completes
+                await_task = asyncio.run(generate_mp3(response_text_for_tts))
                 speak_action()
-            elif listening_mode and not main_loop_stop_event.is_set(): # No TTS but still listening
+            elif listening_mode and not main_loop_stop_event.is_set():
                 set_overlay_mode_safe('listening')
             chat = trim_chat_history(chat)
 
         except sr.UnknownValueError:
-            if listening_mode: print("Could not understand.") # Only print if we expected to understand
+            if listening_mode: print("Could not understand.")
         except sr.RequestError as e:
             print(f"Speech recognition error: {e}")
             asyncio.run(generate_mp3(lm_main.get_string("speech_recognition_problem_speech"))); speak_action()
         except ClientError as e:
             print(f"Google AI ClientError: {e}")
-            is_api_key_invalid = False # Simplified check
+            is_api_key_invalid = False
             if hasattr(e, 'response_json') and e.response_json and 'error' in e.response_json and 'details' in e.response_json['error']:
                 for detail in e.response_json['error']['details']:
                     if detail.get('reason') == 'API_KEY_INVALID': is_api_key_invalid = True; break
@@ -502,10 +530,10 @@ def main_loop_logic():
                 show_error_dialog("api_key_invalid_error_title", "api_key_invalid_error_message")
             else:
                 show_error_dialog("ai_client_error_title", "ai_client_error_message_generic")
-                asyncio.run(generate_mp3(lm_main.get_string("ai_client_error_message_generic"))); # Also speak it
+                asyncio.run(generate_mp3(lm_main.get_string("ai_client_error_message_generic")));
                 speak_action()
-            time.sleep(3) # Pause to avoid spamming errors
-        except StopCandidateException as e: # Handle Gemini safety blocks
+            time.sleep(3)
+        except StopCandidateException as e:
             print(f"Response from AI stopped: {e}")
             asyncio.run(generate_mp3(lm_main.get_string("response_blocked_speech"))); speak_action()
         except Exception as e:
@@ -520,32 +548,30 @@ def main_loop_logic():
 
 async def generate_mp3(text):
     global TTS_VOICE, lm_main
-    if not text or not text.strip(): # Handle empty or whitespace-only text
-        text_sanitized = lm_main.get_string("default_tts_okay") # "Okay." or similar
+    if not text or not text.strip():
+        text_sanitized = lm_main.get_string("default_tts_okay")
     else:
-        # Sanitize text for TTS, removing characters that might cause issues with edge-tts or filenames
         text_sanitized = re.sub(r'[<>:"/\\|?*]', '', text).replace('\n', ' ').replace('\r', '')
-        if not text_sanitized.strip(): # If sanitization results in empty string
-            text_sanitized = lm_main.get_string("default_tts_understood") # "Understood." or similar
+        if not text_sanitized.strip():
+            text_sanitized = lm_main.get_string("default_tts_understood")
 
-    if not pygame.mixer.get_init(): # Check if mixer is available for playback later
+    if not pygame.mixer.get_init():
         print("TTS generated, but Pygame mixer not initialized. Playback might fail.")
 
     communicate = Communicate(text=text_sanitized, voice=TTS_VOICE)
     output_file = "reply.mp3"
-    # Attempt to delete existing file with retries, especially if music is busy
-    for attempt in range(5): # Retry up to 5 times
+    for attempt in range(5):
         try:
             if os.path.exists(output_file):
                 if pygame.mixer.get_init() and pygame.mixer.music.get_busy(): pygame.mixer.music.stop()
-                if pygame.mixer.get_init(): pygame.mixer.music.unload() # Ensure file is not locked
+                if pygame.mixer.get_init(): pygame.mixer.music.unload()
                 time.sleep(0.1); os.remove(output_file)
-            break # Success
-        except OSError as e: # FileInUse or PermissionError
+            break
+        except OSError as e:
             print(f"{output_file} in use, attempt {attempt+1}/5... {e}"); await asyncio.sleep(0.5)
-        except Exception as e: # Other errors
+        except Exception as e:
             print(f"Error pre-save cleanup {output_file}, attempt {attempt+1}/5... {e}"); await asyncio.sleep(0.5)
-    else: # Loop completed without break (all attempts failed)
+    else:
         print(f"Could not delete {output_file}. Skipping TTS."); return
     try:
         await communicate.save(output_file); print(f"TTS saved to {output_file}")
@@ -555,68 +581,69 @@ async def generate_mp3(text):
 
 def trim_chat_history(current_chat_session):
     global MAX_HISTORY, client, chat_config
-    if not current_chat_session or not client or not chat_config: return current_chat_session # Guard clause
+    if not current_chat_session or not client or not chat_config: return current_chat_session
     try:
         history = current_chat_session.get_history()
-        # Each "turn" is a user message and a model reply, so MAX_HISTORY turns = MAX_HISTORY * 2 messages
         required_history_length = MAX_HISTORY * 2
         if len(history) > required_history_length:
-            trimmed_history = history[-required_history_length:] # Keep the most recent messages
-            # Create a new chat session with the trimmed history
+            trimmed_history = history[-required_history_length:]
             new_chat_session = client.chats.create(model="gemini-1.5-flash", config=chat_config, history=trimmed_history)
             print(f"Chat history trimmed. Old: {len(history)}, New: {len(trimmed_history)}")
             return new_chat_session
     except Exception as e:
         print(f"Error trimming chat history: {e}")
-    return current_chat_session # Return original on error or if no trimming needed
+    return current_chat_session
 
 
-def create_image(width, height, color1, color2): # Fallback icon generator
+def create_image(width, height, color1, color2):
     image = Image.new('RGB', (width, height), color1); dc = ImageDraw.Draw(image)
     dc.rectangle((width // 2, 0, width, height // 2), fill=color2)
     dc.rectangle((0, height // 2, width // 2, height), fill=color2); return image
 
 def get_icon_image():
-    for ext in ["ico", "png"]: # Prefer .ico for Windows tray
+    for ext in ["ico", "png"]:
         path = f"icon.{ext}"
         if os.path.exists(path):
             try: return Image.open(path)
             except Exception as e: print(f"Could not load {path}: {e}")
-    return create_image(64, 64, 'black', 'blue') # Fallback
+    return create_image(64, 64, 'black', 'blue')
 
 
 def on_settings_clicked(icon_instance, item_instance):
-    global overlay, lm_main # Ensure lm_main is accessible
+    global overlay, lm_main
     active_settings_toplevel = None
-    # Check if a settings window (Toplevel) is already open and is a child of overlay
-    if overlay and overlay.winfo_exists(): # Check if overlay itself exists
-        for widget in overlay.winfo_children(): # Check direct children first
+    if overlay and overlay.winfo_exists():
+        for widget in overlay.winfo_children():
             if isinstance(widget, tk.Toplevel):
-                try: # Check if widget still exists and has the correct title
+                try:
                     if widget.winfo_exists() and widget.title() == lm_main.get_string("settings_window_title"):
                         active_settings_toplevel = widget; break
-                except tk.TclError: continue # Widget might have been destroyed
-        # If not found in direct children, check all Toplevels (less ideal but a fallback)
-        if not active_settings_toplevel:
-            for widget in tk._default_root.winfo_children(): # Check all Toplevels
-                if isinstance(widget, tk.Toplevel) and widget.master == overlay: # Check master
-                    try:
-                        if widget.winfo_exists() and widget.title() == lm_main.get_string("settings_window_title"):
-                            active_settings_toplevel = widget; break
-                    except tk.TclError: continue
+                except tk.TclError: continue
+        if not active_settings_toplevel: # Check all Toplevels if not direct child
+            # This part might be problematic if other Toplevels exist that are not settings
+            # A more robust way would be to store a reference to the settings window if open.
+            # For now, relying on title and master check.
+            if tk._default_root: # Ensure default root exists
+                for widget in tk._default_root.winfo_children():
+                    if isinstance(widget, tk.Toplevel) and widget.master == overlay:
+                        try:
+                            if widget.winfo_exists() and widget.title() == lm_main.get_string("settings_window_title"):
+                                active_settings_toplevel = widget; break
+                        except tk.TclError: continue
+
 
     if active_settings_toplevel:
         print("Settings window already open. Bringing to front.")
         active_settings_toplevel.lift(); active_settings_toplevel.focus_force(); return
 
-    if not overlay or not overlay.winfo_exists(): # Ensure overlay exists before opening settings
+    if not overlay or not overlay.winfo_exists():
         print("Error: Overlay window does not exist. Cannot open settings.")
         show_error_dialog("error_title", "overlay_not_available_error")
         return
 
-    settings_top_level = tk.Toplevel(overlay) # Make settings a child of overlay
-    _settings_app_instance = ModernSettingsApp(settings_top_level, lm=lm_main) # Pass lm_main
-    overlay.wait_window(settings_top_level) # Wait for settings window to close
+    settings_top_level = tk.Toplevel(overlay)
+    _settings_app_instance = ModernSettingsApp(settings_top_level, lm=lm_main)
+    overlay.wait_window(settings_top_level)
     print("Settings window closed. Reloading and applying configuration.")
     newly_loaded_settings = app_load_settings()
     update_globals_from_settings(newly_loaded_settings)
@@ -625,65 +652,77 @@ def on_settings_clicked(icon_instance, item_instance):
 def on_exit_clicked(icon_instance, item_instance):
     print("Exiting application...")
     global overlay, main_loop_thread, tray_icon
-    main_loop_stop_event.set(); speech_stop_event.set() # Signal all loops to stop
+    main_loop_stop_event.set(); speech_stop_event.set()
 
     if tray_icon:
         try: tray_icon.stop(); print("Tray icon stop request sent.")
-        except Exception as e: print(f"Error stopping tray icon: {e}") # pystray might raise if already stopped
+        except Exception as e: print(f"Error stopping tray icon: {e}")
 
-    if overlay and overlay.winfo_exists(): # If overlay exists, quit its mainloop
+    if overlay and overlay.winfo_exists():
         print("Sending quit request to Overlay (Tkinter mainloop)...")
-        overlay.after(100, overlay.quit) # Schedule quit after short delay
-    elif overlay: # Overlay object exists but window doesn't (already destroyed)
+        overlay.after(100, overlay.quit)
+    elif overlay:
         print("Overlay window already destroyed.")
-    else: # Overlay was never initialized
+    else:
         print("Overlay not initialized.")
 
     if main_loop_thread and main_loop_thread.is_alive():
         print("Waiting for main loop thread to join...")
-        main_loop_thread.join(timeout=5) # Wait for thread to finish
+        main_loop_thread.join(timeout=5)
         if main_loop_thread.is_alive(): print("Warning: Main loop thread did not terminate cleanly.")
 
     if pygame.mixer.get_init(): pygame.mixer.quit(); print("Pygame Mixer quit.")
     print("Application exit sequence complete.")
-    # sys.exit(0) # Not always needed if all threads/loops terminate cleanly
+    # sys.exit(0) # Usually not needed if Tkinter mainloop and threads exit cleanly.
 
 
 if __name__ == "__main__":
-    if not API_KEY or API_KEY == app_default_settings["api_key"] and not os.getenv("GEMINI_API_KEY"):
-        # No parent for this initial messagebox
-        messagebox.showwarning(lm_main.get_string("api_key_not_configured_warning_title"),
-                               lm_main.get_string("api_key_not_configured_warning_message"))
+    print("Manfred AI starting up...")
 
-    overlay = ModernOverlay(speech_stop_event) # Pass the event object
+    # lm_main is initialized after console redirection and settings load.
+    # API_KEY is initialized within update_globals_from_settings, called after lm_main.
+    # So, this warning needs to be after lm_main and API_KEY are set.
+    # update_globals_from_settings(current_app_settings, initial_load=True) is already called.
+
+    if not API_KEY or API_KEY == app_default_settings["api_key"] and not os.getenv("GEMINI_API_KEY"):
+        # Ensure lm_main is available for this messagebox
+        if lm_main:
+             messagebox.showwarning(lm_main.get_string("api_key_not_configured_warning_title"),
+                                   lm_main.get_string("api_key_not_configured_warning_message"))
+        else: # Fallback if lm_main somehow not ready (should not happen)
+            messagebox.showwarning("API Key Warning", "API key is not configured. Please set it in the settings.")
+
+
+    overlay = ModernOverlay(speech_stop_event) # overlay is now the main Tk root for console parent
     tray_icon_image = get_icon_image()
-    # Use lambdas for menu items to ensure lm_main.get_string is called when menu is built/shown
     menu_items = (
         item(lambda text: lm_main.get_string("tray_settings", default_text="Settings"), on_settings_clicked),
+        item(lambda text: lm_main.get_string("tray_console", default_text="Console"),
+             lambda: show_console_window_external(overlay, lm_main)), # Pass overlay and lm_main
         item(lambda text: lm_main.get_string("tray_exit", default_text="Exit"), on_exit_clicked)
     )
     tray_icon = icon("ManfredAI", tray_icon_image, "Manfred AI", menu_items)
 
-    main_loop_stop_event.clear(); speech_stop_event.clear() # Ensure events are clear at start
+    main_loop_stop_event.clear(); speech_stop_event.clear()
     main_loop_thread = Thread(target=main_loop_logic, daemon=True); main_loop_thread.start()
     print("Main loop thread started.")
 
-    tray_thread = Thread(target=tray_icon.run, daemon=True); tray_thread.start() # Run tray in its own thread
+    tray_thread = Thread(target=tray_icon.run, daemon=True); tray_thread.start()
     print("Manfred AI tray application started. Right-click the icon for options.")
 
     try:
-        overlay.mainloop() # Start Tkinter main loop for the overlay
+        overlay.mainloop()
     except KeyboardInterrupt:
         print("KeyboardInterrupt received, initiating exit..."); on_exit_clicked(None, None)
-    except tk.TclError as e: # Catch Tcl errors, often from destroying widgets
+    except tk.TclError as e:
         if "application has been destroyed" in str(e).lower():
             print("Tkinter mainloop exited (app destroyed).")
-        else: # Other TclError
+        else:
             print(f"Tkinter TclError: {e}"); import traceback; traceback.print_exc(); on_exit_clicked(None, None)
-    except Exception as e: # Catch any other unexpected errors in mainloop
+    except Exception as e:
         print(f"An unexpected error in Tkinter mainloop: {e}"); import traceback; traceback.print_exc(); on_exit_clicked(None, None)
 
     print("Tkinter mainloop finished.")
-    if not main_loop_stop_event.is_set(): # If exit wasn't already triggered
+    if not main_loop_stop_event.is_set(): # Ensure exit is called if mainloop ended unexpectedly
         on_exit_clicked(None, None)
     print("Application process ending.")

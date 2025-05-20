@@ -102,5 +102,15 @@
     "tts_preview_button": "Vorschau",
     "tts_preview_text": "Dies ist ein Test der ausgewählten Stimme.",
     "yes_button_text": "Ja",
-    "no_button_text": "Nein"
+    "no_button_text": "Nein",
+    "tray_console": "Konsole",
+    "console_window_title": "Anwendungskonsole",
+    "console_clear_button": "Löschen",
+    "standard_settings_group_title": "Standard-Anwendungseinstellungen",
+    "fallback_agent_settings_group_title": "Globale Standard-Agenten-Einstellungen (Fallback)",
+    "fallback_agent_settings_explanation": "Diese Einstellungen werden als Standard verwendet, wenn ein Agent im Agenten-Builder keine eigenen Überschreibungen festlegt.",
+    "agent_builder_specific_settings_label": "Agenten-spezifische Überschreibungen (leer lassen/Standard, um globale Einstellungen zu verwenden)",
+    "agent_builder_global_default_placeholder": "Global: {value}",
+    "agent_builder_tts_use_global": "-- Globale Standardeinstellung verwenden --",
+    "agent_builder_use_global_rb": "Global"
 }

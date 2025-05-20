@@ -99,5 +99,15 @@
     "ai_client_error_message_generic": "An AI service error occurred. Please check your connection and make sure you're using a valid API key in the settings.",
     "unexpected_error_speech": "An unexpected error occurred.",
     "tts_preview_button": "Preview",
-    "tts_preview_text": "This is a test of the selected voice."
+    "tts_preview_text": "This is a test of the selected voice.",
+    "tray_console": "Console",
+    "console_window_title": "Application Console",
+    "console_clear_button": "Clear",
+    "standard_settings_group_title": "Standard Application Settings",
+    "fallback_agent_settings_group_title": "Global Default Agent Settings (Fallbacks)",
+    "fallback_agent_settings_explanation": "These settings are used as defaults if an agent does not specify its own overrides in the Agent Builder.",
+    "agent_builder_specific_settings_label": "Agent-Specific Overrides (leave blank/default to use global settings)",
+    "agent_builder_global_default_placeholder": "Global: {value}",
+    "agent_builder_tts_use_global": "-- Use Global Default --",
+    "agent_builder_use_global_rb": "Global"
 }

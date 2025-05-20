@@ -102,5 +102,15 @@
     "tts_preview_button": "Aperçu",
     "tts_preview_text": "Ceci est un test de la voix sélectionnée.",
     "yes_button_text": "Oui",
-    "no_button_text": "Non"
+    "no_button_text": "Non",
+    "tray_console": "Console",
+    "console_window_title": "Console de l'application",
+    "console_clear_button": "Effacer",
+    "standard_settings_group_title": "Paramètres d'application standard",
+    "fallback_agent_settings_group_title": "Paramètres d'agent par défaut globaux (Fallback)",
+    "fallback_agent_settings_explanation": "Ces paramètres sont utilisés par défaut si un agent ne spécifie pas ses propres remplacements dans le Générateur d'agents.",
+    "agent_builder_specific_settings_label": "Remplacements spécifiques à l'agent (laisser vide/par défaut pour utiliser les paramètres globaux)",
+    "agent_builder_global_default_placeholder": "Global : {value}",
+    "agent_builder_tts_use_global": "-- Utiliser le paramètre global par défaut --",
+    "agent_builder_use_global_rb": "Global"
 }
