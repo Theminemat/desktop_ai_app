@@ -112,5 +112,9 @@
     "agent_builder_specific_settings_label": "Remplacements spécifiques à l'agent (laisser vide/par défaut pour utiliser les paramètres globaux)",
     "agent_builder_global_default_placeholder": "Global : {value}",
     "agent_builder_tts_use_global": "-- Utiliser le paramètre global par défaut --",
-    "agent_builder_use_global_rb": "Global"
+    "agent_builder_use_global_rb": "Global",
+    "application_already_running_title": "Application déjà en cours",
+    "application_already_running_message": "Une autre instance de Manfred AI est déjà en cours d'exécution.",
+    "lock_file_critical_error_title": "Erreur critique au démarrage",
+    "lock_file_critical_error_message": "Impossible de créer un fichier de verrouillage : {e}\nL'application ne peut pas démarrer sans garantir qu'il s'agit d'une instance unique. Veuillez vérifier les autorisations pour le répertoire de l'application ou contacter le support."
 }

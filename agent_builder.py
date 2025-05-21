@@ -1,4 +1,4 @@
-# C:/Users/Theminemat/Documents/Programming/manfred desktop ai/agent_builder.py
+# C:/Users/Theminemat/Documents/Programming/desktop_ai/agent_builder.py
 import json
 import os
 import tkinter as tk
@@ -14,11 +14,13 @@ import asyncio  # For TTS preview if added later
 
 # Constants related to system prompts
 SYSPROMPTS_FILE = "sysprompts.json"
-SYSTEM_PROMPT_SUFFIX = (
-    "\n\nGenerate the reply so that a simple TTS can read it correctly. "
-    "\nYou can open links on my PC by just including them in your message without formatting; "
-    "just start links with https://. Also use this when the user asks you to search on a website like YouTube."
-)
+# SYSTEM_PROMPT_SUFFIX is now dynamically generated in get_full_system_prompt
+# Original for reference (will not be used directly by get_full_system_prompt anymore):
+# SYSTEM_PROMPT_SUFFIX = (
+#     "\n\nGenerate the reply so that a simple TTS can read it correctly. "
+#     "\nYou can open links on my PC by just including them in your message without formatting; "
+#     "just start links with https://. Also use this when the user asks you to search on a website like YouTube."
+# )
 
 # Define keys for agent-specific settings within the sysprompts.json structure
 AGENT_SETTING_TEXT = "text"
@@ -27,6 +29,14 @@ AGENT_SETTING_STOP_WORDS = "stop_words_override"
 AGENT_SETTING_CHAT_LENGTH = "chat_length_override"
 AGENT_SETTING_TTS_VOICE = "tts_voice_override"
 AGENT_SETTING_OPEN_LINKS = "open_links_automatically_override"
+
+
+def resource_path_local(relative_path):  # Eigene Definition oder Import von main
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(os.path.join(os.path.dirname(__file__)))
+    return os.path.join(base_path, relative_path)
 
 
 class CustomAskYesNoDialog(tk.Toplevel):
@@ -203,18 +213,56 @@ def save_system_prompts(prompts_dict, lm):  # lm can be None
         return False
 
 
-def get_full_system_prompt(prompt_name, all_prompts_data, global_activation_word, default_prompt_text_if_missing):
+def get_full_system_prompt(prompt_name, all_prompts_data,
+                           global_activation_word, global_open_links_setting,
+                           default_prompt_text_if_missing,
+                           effective_tts_voice_id, tts_voices_structured_data):  # Added new parameters
     agent_config = all_prompts_data.get(prompt_name, {})
     if not isinstance(agent_config, dict):  # Should not happen with new load_system_prompts
         base_text = default_prompt_text_if_missing
         activation_word_to_use = global_activation_word
+        effective_open_links = global_open_links_setting
     else:
         base_text = agent_config.get(AGENT_SETTING_TEXT, default_prompt_text_if_missing)
         agent_specific_activation_word = agent_config.get(AGENT_SETTING_ACTIVATION_WORD)
         activation_word_to_use = agent_specific_activation_word if agent_specific_activation_word else global_activation_word
 
+        # Determine effective open_links setting for this agent
+        agent_specific_open_links = agent_config.get(AGENT_SETTING_OPEN_LINKS)  # This can be True, False, or None
+        if agent_specific_open_links is None:
+            effective_open_links = global_open_links_setting
+        else:
+            effective_open_links = agent_specific_open_links
+
     base_text = base_text.replace("{name}", activation_word_to_use)
-    return base_text + SYSTEM_PROMPT_SUFFIX
+
+    # Construct the dynamic suffix parts
+    tts_instruction_part = "\n\nGenerate the reply so that a simple TTS can read it correctly."
+
+    language_instruction_part = ""
+    if effective_tts_voice_id and tts_voices_structured_data:
+        found_language_name = None
+        for lang_key, lang_data in tts_voices_structured_data.items():
+            if "voices" in lang_data:
+                for voice_short_name, voice_id_val in lang_data["voices"].items():
+                    if voice_id_val == effective_tts_voice_id:
+                        found_language_name = lang_key.split(' (')[
+                            0]  # Extracts "English" from "English (US)", "German" from "German"
+                        break
+            if found_language_name:
+                break
+
+        if found_language_name:
+            language_instruction_part = f"\nSpeak in fluent {found_language_name}."
+
+    links_instruction_part = ""
+    if effective_open_links:
+        links_instruction_part = "\nYou can open links on the users computer by just putting them somewhere in your response with https:// if the user ask you to google something you can also open it with url parameters."
+    else:
+        links_instruction_part = "\nYou can't open links on the users computer because he has this setting disabled."
+
+    dynamic_suffix = tts_instruction_part + language_instruction_part + links_instruction_part
+    return base_text + dynamic_suffix
 
 
 class SystemPromptManagerWindow(tk.Toplevel):

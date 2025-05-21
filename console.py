@@ -17,6 +17,14 @@ _original_sys_stderr = None
 _stdout_redirector = None
 _stderr_redirector = None
 
+def resource_path_local(relative_path): # Eigene Definition oder Import von main
+     try:
+         base_path = sys._MEIPASS
+     except Exception:
+         base_path = os.path.abspath(os.path.join(os.path.dirname(__file__)))
+     return os.path.join(base_path, relative_path)
+
+
 
 def get_console_text_widget_instance():
     global _console_window_text_widget
@@ -96,7 +104,7 @@ class ConsoleWindow(tk.Toplevel):
         self.title(self.lm.get_string("console_window_title", default_text="Application Console"))
         self.geometry("800x500")
         try:
-            icon_path = "icon.ico"
+            icon_path = resource_path_local("icon.ico")
             if os.path.exists(icon_path): self.iconbitmap(default=icon_path)
         except Exception as e:
             # This print will go through the redirector

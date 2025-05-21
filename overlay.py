@@ -4,6 +4,12 @@ import numpy as np
 
 
 # Kein 'from threading import Event' hier, da es übergeben wird
+def resource_path_local(relative_path):  # Eigene Definition oder Import von main
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(os.path.join(os.path.dirname(__file__)))
+    return os.path.join(base_path, relative_path)
 
 class ModernOverlay(tk.Tk):
     def __init__(self, speech_stop_event_ref):  # speech_stop_event wird jetzt übergeben
@@ -17,7 +23,7 @@ class ModernOverlay(tk.Tk):
 
         # --- Set Overlay Icon ---
         try:
-            overlay_icon_path = "icon.ico"
+            overlay_icon_path = resource_path_local("icon.ico")
             if os.path.exists(overlay_icon_path):
                 self.iconbitmap(default=overlay_icon_path)
             else:

@@ -109,5 +109,9 @@
     "agent_builder_specific_settings_label": "Agent-Specific Overrides (leave blank/default to use global settings)",
     "agent_builder_global_default_placeholder": "Global: {value}",
     "agent_builder_tts_use_global": "-- Use Global Default --",
-    "agent_builder_use_global_rb": "Global"
+    "agent_builder_use_global_rb": "Global",
+    "application_already_running_title": "Application Already Running",
+    "application_already_running_message": "Another instance of Manfred AI is already running.",
+    "lock_file_critical_error_title": "Critical Startup Error",
+    "lock_file_critical_error_message": "Could not create a lock file: {e}\nThe application cannot start without ensuring it's a single instance. Please check permissions for the application directory or contact support."
 }

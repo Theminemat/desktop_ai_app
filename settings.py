@@ -4,17 +4,14 @@ import os
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
 from tkinter.font import Font
-# from tkinter.scrolledtext import ScrolledText # No longer needed here
 import sv_ttk
 import sys
-import re
 import asyncio
 from threading import Thread
 from edge_tts import Communicate
 import pygame
 import time
 
-# --- Mock speech_recognition for testing if not installed (for settings.py standalone) ---
 try:
     import speech_recognition as sr_audio
 except ImportError:
@@ -50,9 +47,6 @@ try:
         load_system_prompts as agent_load_system_prompts,
         save_system_prompts as agent_save_system_prompts,  # Though not directly used here, good for consistency
         get_full_system_prompt as agent_get_full_system_prompt,
-        # Constants for agent settings to reference default values if needed (though not directly used here for now)
-        # AGENT_SETTING_ACTIVATION_WORD, AGENT_SETTING_STOP_WORDS,
-        # AGENT_SETTING_CHAT_LENGTH, AGENT_SETTING_TTS_VOICE, AGENT_SETTING_OPEN_LINKS
     )
 except ImportError:
     messagebox.showerror("Error", "agent_builder.py could not be found or imported.")
@@ -70,9 +64,6 @@ DEFAULT_SYSTEM_PROMPT_TEXT = (
     "A good amount of humor is good to keep the conversation natural, friend-like. Your top priorities are efficiency and clarity."
 )
 
-# These settings now represent:
-# - api_key, ui_language, selected_microphone, selected_speaker, active_system_prompt_name: True global settings
-# - chat_length, activation_word, stop_words, open_links_automatically, tts_voice: Global fallbacks for agents
 default_settings = {
     "api_key": "Enter your Gemini API key here",
     "ui_language": "en-US",
@@ -80,12 +71,11 @@ default_settings = {
     "selected_speaker": "System Default",
     "active_system_prompt_name": DEFAULT_SYSTEM_PROMPT_NAME,
 
-    # Fallback settings for agents (if not overridden in agent_builder)
-    "activation_word": "Manfred", # Fallback
-    "stop_words": ["stop", "stopp", "exit", "quit"], # Fallback
-    "chat_length": 5, # Fallback
-    "open_links_automatically": True, # Fallback
-    "tts_voice": "en-US-AriaNeural", # Fallback
+    "activation_word": "Manfred",
+    "stop_words": ["stop", "stopp", "exit", "quit"],
+    "chat_length": 5,
+    "open_links_automatically": True,
+    "tts_voice": "en-US-AriaNeural",
 }
 
 TTS_VOICES_STRUCTURED = {
@@ -198,6 +188,13 @@ TTS_VOICES_STRUCTURED = {
 }
 AVAILABLE_UI_LANGUAGES = {}
 
+
+def resource_path_local(relative_path):  # Eigene Definition oder Import von main
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(os.path.join(os.path.dirname(__file__)))
+    return os.path.join(base_path, relative_path)
 
 class LanguageManager:
     def __init__(self, initial_lang_code="en-US"):
@@ -364,7 +361,7 @@ class ModernSettingsApp:
             except pygame.error as e: print(f"Warning: Pygame mixer could not be initialized in settings: {e}")
 
         try:
-            icon_path = "icon.ico"
+            icon_path = resource_path_local("icon.ico")
             if os.path.exists(icon_path): self.root.iconbitmap(default=icon_path)
         except Exception as e: print(f"Warning: Could not set icon: {e}")
 
