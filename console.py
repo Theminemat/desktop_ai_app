@@ -1,23 +1,23 @@
-# C:/Users/Theminemat/Documents/Programming/manfred desktop ai/console.py
+
 import tkinter as tk
 from tkinter import messagebox, scrolledtext
 from collections import deque
 import sys
 import os
 
-# --- Console Globals ---
-MAX_CONSOLE_LINES = 2000  # Max lines to keep in the console log cache
-console_log_cache = deque(maxlen=MAX_CONSOLE_LINES)
-_console_window_text_widget = None  # Reference to the ScrolledText widget in the console window
-_console_window_instance = None  # Reference to the ConsoleWindow instance
 
-# Original stream references, will be set by init_output_redirection
+MAX_CONSOLE_LINES = 2000  
+console_log_cache = deque(maxlen=MAX_CONSOLE_LINES)
+_console_window_text_widget = None  
+_console_window_instance = None  
+
+
 _original_sys_stdout = None
 _original_sys_stderr = None
 _stdout_redirector = None
 _stderr_redirector = None
 
-def resource_path_local(relative_path): # Eigene Definition oder Import von main
+def resource_path_local(relative_path): 
      try:
          base_path = sys._MEIPASS
      except Exception:
@@ -47,24 +47,21 @@ class OutputRedirector:
             try:
                 self.original_stream.write(text)
                 self.original_stream.flush()
-            except Exception:  # pragma: no cover
-                # Ignore errors writing to original stream if it's closed/problematic
-                # This can happen during shutdown if original_stream is already closed
+            except Exception:  
                 if not (isinstance(self.original_stream,
                                    (type(sys.stdout), type(sys.stderr))) and self.original_stream.closed):
-                    pass  # Avoid printing if it's a standard stream that's closed
+                    pass  
 
         self.cache.append(text)
         text_widget = self.get_text_widget()
         if text_widget and text_widget.winfo_exists():
             try:
-                # Ensure UI update is done in the main thread via the widget's master's 'after'
+
                 text_widget.master.after(0, self._update_text_widget_safely, text, text_widget)
-            except (tk.TclError, AttributeError):  # Widget might be destroyed or not fully initialized
+            except (tk.TclError, AttributeError):  
                 pass
 
     def _update_text_widget_safely(self, text, widget_instance):
-        # This method is called by 'after' and runs in the main Tkinter thread
         if widget_instance and widget_instance.winfo_exists():
             current_state = widget_instance.cget("state")
             widget_instance.configure(state=tk.NORMAL)
@@ -76,15 +73,15 @@ class OutputRedirector:
         if self.original_stream:
             try:
                 self.original_stream.flush()
-            except Exception:  # pragma: no cover
+            except Exception:  
                 pass
 
 
 def init_output_redirection():
     global _original_sys_stdout, _original_sys_stderr, _stdout_redirector, _stderr_redirector
-    global console_log_cache  # Ensure it's using the global deque from this module
+    global console_log_cache  
 
-    if _original_sys_stdout is None:  # Initialize only once
+    if _original_sys_stdout is None: 
         _original_sys_stdout = sys.stdout
         _original_sys_stderr = sys.stderr
 
@@ -107,11 +104,11 @@ class ConsoleWindow(tk.Toplevel):
             icon_path = resource_path_local("icon.ico")
             if os.path.exists(icon_path): self.iconbitmap(default=icon_path)
         except Exception as e:
-            # This print will go through the redirector
+
             print(f"Warning: Could not set icon for console window: {e}")
 
         self.cache = cache_deque_ref
-        _console_window_instance = self  # Set global instance reference
+        _console_window_instance = self  
 
         self.text_area = scrolledtext.ScrolledText(self, wrap=tk.WORD, state=tk.DISABLED, height=20)
         self.text_area.pack(expand=True, fill=tk.BOTH, padx=5, pady=5)
@@ -175,19 +172,19 @@ def show_console_window(parent_tk_master, lang_manager_instance):
     if parent_tk_master and parent_tk_master.winfo_exists():
         actual_master_for_console = parent_tk_master
     else:
-        # This print will go through the redirector
+
         print("Parent (overlay) not found or destroyed, trying to create console as standalone/on default root.")
         try:
             if tk._default_root and tk._default_root.winfo_exists():
                 actual_master_for_console = tk._default_root
             else:
-                # No good parent, show error if lang_manager_instance is available
+
                 if lang_manager_instance:
                     messagebox.showerror(
                         lang_manager_instance.get_string("error_title", default_text="Error"),
                         lang_manager_instance.get_string("overlay_not_available_error",
                                                          default_text="Main application window not available to host the console.")
-                        # Parent for messagebox is None as we don't have a good one
+
                     )
                 else:  # Cannot even show a localized messagebox
                     messagebox.showerror("Error", "Main application window not available to host the console.")
@@ -204,5 +201,5 @@ def show_console_window(parent_tk_master, lang_manager_instance):
                 messagebox.showerror("Error", "Cannot open console: main window context lost.")
             return
 
-    # _console_window_instance is set inside ConsoleWindow's __init__
+
     ConsoleWindow(actual_master_for_console, console_log_cache, lang_manager_instance)
