@@ -1,4 +1,4 @@
-# C:/Users/Theminemat/Documents/Programming/manfred desktop ai/settings.py
+
 import json
 import os
 import tkinter as tk
@@ -38,9 +38,9 @@ except ImportError:
 
 
     sr_audio = MockSrAudioModule()
-# --- End Mock ---
 
-# Import from agent_builder
+
+
 try:
     from agent_builder import (
         SystemPromptManagerWindow,
