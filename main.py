@@ -1,4 +1,4 @@
-# C:/Users/Theminemat/Documents/Programming/desktop_ai/main.py
+
 import asyncio
 import os
 import re
@@ -32,7 +32,7 @@ try:
     from agent_builder import (
         load_system_prompts as agent_load_system_prompts,
         get_full_system_prompt as agent_get_full_system_prompt,
-        # Hinzugefügte Importe für Agenten-Einstellungskonstanten
+
         AGENT_SETTING_ACTIVATION_WORD,
         AGENT_SETTING_STOP_WORDS,
         AGENT_SETTING_CHAT_LENGTH,
@@ -54,7 +54,7 @@ except ImportError:
     messagebox.showerror("Error", "overlay.py could not be found or imported.")
     sys.exit(1)
 
-# --- Console Output Redirection (Import and Initialize) ---
+
 try:
     from console import init_output_redirection, show_console_window as show_console_window_external, get_console_window_instance
     init_output_redirection()
@@ -64,7 +64,7 @@ except ImportError as e:
     def show_console_window_external(overlay, lm): messagebox.showerror("Error", "Console module failed to load.")
     def get_console_window_instance(): return None
     init_output_redirection()
-# --- End Console Output Redirection ---
+
 
 
 try:
@@ -72,15 +72,15 @@ try:
 except pygame.error as e:
     print(f"Initial Pygame mixer init failed: {e}. Audio output may not work.") # This print will be captured
 
-# --- Global Variables ---
+
 current_app_settings = app_load_settings() # This may print, will be captured
 lm_main = LanguageManager(current_app_settings.get("ui_language", app_default_settings["ui_language"])) # This may print
 all_system_prompts = agent_load_system_prompts(DEFAULT_SYSTEM_PROMPT_NAME, DEFAULT_SYSTEM_PROMPT_TEXT)
 
-# --- Globals for Single Instance Lock ---
+
 _lock_file_descriptor = None
 _lock_file_path = None
-# --- End Globals for Single Instance Lock ---
+
 
 CodeWord = ""
 StopWords = []
@@ -106,28 +106,26 @@ main_loop_thread = None
 tray_icon = None
 
 
-# --- Utility Functions ---
+
 def resource_path(relative_path):
     """ Pfad zu Datei relativ zum Skript oder zur gepackten EXE """
     if hasattr(sys, '_MEIPASS'):
-        # Wenn in einer gepackten EXE
+
         return os.path.join(sys._MEIPASS, relative_path)
-    # Im Entwicklungsmodus: Pfad relativ zum aktuellen Arbeitsverzeichnis
-    # oder besser: relativ zum Verzeichnis des Hauptskripts
+
+
     base_path = os.path.dirname(os.path.abspath(sys.argv[0]))
     return os.path.join(base_path, relative_path)
 
 def get_app_data_path(filename):
 
     if hasattr(sys, '_MEIPASS'):
-        # Pfad zum Verzeichnis der EXE-Datei
         application_path = os.path.dirname(sys.executable)
     else:
-        # Pfad zum Verzeichnis des Hauptskripts
         application_path = os.path.dirname(os.path.abspath(sys.argv[0]))
     return os.path.join(application_path, filename)
 
-# --- Lock File Cleanup Function ---
+
 def cleanup_lock_file():
     global _lock_file_descriptor, _lock_file_path
     if _lock_file_descriptor is not None:
@@ -144,11 +142,10 @@ def cleanup_lock_file():
             print(f"Lock file '{_lock_file_path}' removed.")
         except OSError as e:
             print(f"Error removing lock file '{_lock_file_path}': {e}")
-# --- End Lock File Cleanup Function ---
+
 
 def show_error_dialog(title_key: str, message_key: str, parent=None, **format_args):
     global lm_main, overlay
-    # lm_main should be initialized by now
 
     title = lm_main.get_string(title_key, default_text="Error")
     message_text = lm_main.get_string(message_key, default_text="An error occurred: {e}", **format_args)
@@ -157,7 +154,7 @@ def show_error_dialog(title_key: str, message_key: str, parent=None, **format_ar
         if overlay and overlay.winfo_exists():
             parent = overlay
         else:
-            # Try to get console window instance from the console module
+
             console_instance = get_console_window_instance()
             if console_instance and console_instance.winfo_exists():
                 parent = console_instance
@@ -211,10 +208,10 @@ def initialize_audio_devices():
             print(f"Error listing or finding microphones: {e}. Using system default.")
             SELECTED_MIC_NAME = "System Default" # Fallback
 
-    # Re-assign to default if it was forced by error above
+
     if SELECTED_MIC_NAME == "System Default":
         print("Using system default microphone.")
-        mic_index = None # Ensure mic_index is None for default
+        mic_index = None 
 
     try:
         mic = sr.Microphone(device_index=mic_index)
@@ -241,16 +238,14 @@ def update_globals_from_settings(loaded_settings, initial_load=False):
     global CodeWord, StopWords, MAX_HISTORY, API_KEY, current_app_settings, all_system_prompts
     global client, chat, chat_config, OPEN_LINKS_AUTOMATICALLY, ACTIVE_SYSTEM_PROMPT_NAME, TTS_VOICE
     global lm_main, STT_LANGUAGE, SELECTED_MIC_NAME, SELECTED_SPEAKER_NAME
-    # Note: TTS_VOICES_STRUCTURED is imported directly from settings module
 
-    # Capture old values for comparison to determine what changed
+
     old_api_key = current_app_settings.get("api_key") if not initial_load else None
     old_chat_length_global = current_app_settings.get("chat_length") if not initial_load else None # Global setting
     old_open_links_global = current_app_settings.get("open_links_automatically", app_default_settings[
         "open_links_automatically"]) if not initial_load else False
     old_active_prompt_name_global = current_app_settings.get("active_system_prompt_name") if not initial_load else None
     old_ui_language = current_app_settings.get("ui_language") if not initial_load else None
-    # Capture the *effective* TTS voice from the *previous* state of the TTS_VOICE global
     old_effective_tts_voice = TTS_VOICE if not initial_load else None
     old_mic_name = current_app_settings.get("selected_microphone") if not initial_load else None
     old_speaker_name = current_app_settings.get("selected_speaker") if not initial_load else None
@@ -263,7 +258,7 @@ def update_globals_from_settings(loaded_settings, initial_load=False):
     if initial_load or old_ui_language != new_ui_language:
         lm_main.set_language(new_ui_language)
 
-    # Determine ACTIVE_SYSTEM_PROMPT_NAME first from global settings
+
     ACTIVE_SYSTEM_PROMPT_NAME = current_app_settings.get("active_system_prompt_name",
                                                          app_default_settings["active_system_prompt_name"])
     if ACTIVE_SYSTEM_PROMPT_NAME not in all_system_prompts:
@@ -271,12 +266,12 @@ def update_globals_from_settings(loaded_settings, initial_load=False):
         print(
             f"Warning: Active system prompt '{current_app_settings.get('active_system_prompt_name')}' not found. Falling back to default.")
 
-    # Get the configuration for the currently active agent
+
     active_agent_config = all_system_prompts.get(ACTIVE_SYSTEM_PROMPT_NAME, {})
     if not isinstance(active_agent_config, dict): # Should not happen with new loader
         active_agent_config = {} # Provide an empty dict to prevent errors on .get()
 
-    # Determine effective settings, considering agent overrides THEN global settings
+
     agent_activation_word_override = active_agent_config.get(AGENT_SETTING_ACTIVATION_WORD)
     CodeWord = agent_activation_word_override if agent_activation_word_override else \
                current_app_settings.get("activation_word", app_default_settings["activation_word"])
@@ -294,18 +289,18 @@ def update_globals_from_settings(loaded_settings, initial_load=False):
                                current_app_settings.get("open_links_automatically",
                                                         app_default_settings["open_links_automatically"])
 
-    # TTS_VOICE: Agent override, then global setting. This updates the global TTS_VOICE.
+
     agent_tts_voice_override = active_agent_config.get(AGENT_SETTING_TTS_VOICE)
     global_tts_voice_setting = current_app_settings.get("tts_voice", app_default_settings["tts_voice"])
     TTS_VOICE = agent_tts_voice_override if agent_tts_voice_override else global_tts_voice_setting
-    # Now the global TTS_VOICE is the effective one for the active agent.
 
-    # These are always from global settings, not agent-specific
+
+
     SELECTED_MIC_NAME = current_app_settings.get("selected_microphone", app_default_settings["selected_microphone"])
     SELECTED_SPEAKER_NAME = current_app_settings.get("selected_speaker", app_default_settings["selected_speaker"])
 
-    # Derive STT_LANGUAGE from the new *effective* TTS_VOICE
-    # Compare the new effective TTS_VOICE with the old_effective_tts_voice captured at the start
+
+
     tts_voice_effectively_changed = initial_load or old_effective_tts_voice != TTS_VOICE
 
     if tts_voice_effectively_changed:
@@ -336,7 +331,7 @@ def update_globals_from_settings(loaded_settings, initial_load=False):
                     parent=overlay
                 )
 
-    # Get global default settings to pass to agent_get_full_system_prompt
+
     global_activation_word_default = current_app_settings.get("activation_word",
                                                               app_default_settings["activation_word"])
     global_open_links_default = current_app_settings.get("open_links_automatically",
@@ -430,7 +425,7 @@ def update_globals_from_settings(loaded_settings, initial_load=False):
                                     parent=overlay)
 
 
-# update_globals_from_settings(current_app_settings, initial_load=True) # Wird später im __main__ aufgerufen
+
 
 def set_overlay_mode_safe(mode):
     if overlay and overlay.winfo_exists():
@@ -547,7 +542,6 @@ def main_loop_logic():
                 else: # Not activation word
                     continue
             else: # Already listening_mode
-                # StopWords are now agent-aware
                 is_stop_command = any(re.search(r"\b" + re.escape(sw.lower()) + r"\b", text_lower) for sw in StopWords)
                 if is_stop_command:
                     listening_mode = False; print("Mode deactivated (by stopword).")
@@ -570,7 +564,6 @@ def main_loop_logic():
             match = re.search(url_pattern, response.text)
             if match:
                 url = match.group(0)
-                # OPEN_LINKS_AUTOMATICALLY is now agent-aware
                 if OPEN_LINKS_AUTOMATICALLY:
                     if not url.startswith("http"): url = "https://" + url # Ensure scheme for webbrowser
                     print(f"Opening link: {url}")
@@ -586,12 +579,11 @@ def main_loop_logic():
                     print(f"Link found (not opened): {url}")
 
             if response_text_for_tts:
-                # generate_mp3 uses the global TTS_VOICE, which is now agent-aware
+
                 await_task = asyncio.run(generate_mp3(response_text_for_tts))
                 speak_action()
             elif listening_mode and not main_loop_stop_event.is_set():
                 set_overlay_mode_safe('listening')
-            # trim_chat_history uses MAX_HISTORY, which is now agent-aware
             chat = trim_chat_history(chat)
 
         except sr.UnknownValueError:
@@ -750,16 +742,16 @@ def on_exit_clicked(icon_instance, item_instance):
 
     if pygame.mixer.get_init(): pygame.mixer.quit(); print("Pygame Mixer quit.")
     print("Application exit sequence complete.")
-    # cleanup_lock_file() wird durch atexit aufgerufen
-    # sys.exit(0) # Usually not needed if Tkinter mainloop and threads exit cleanly.
+
+
 
 
 if __name__ == "__main__":
     print("Manfred AI starting up...")
 
-    # --- Single Instance Check ---
-    # lm_main ist bereits initialisiert (ganz oben nach den Imports)
-    # get_app_data_path ist auch bereits definiert
+
+
+
     _lock_file_path = get_app_data_path("manfred_ai.lock")
     try:
         _lock_file_descriptor = os.open(_lock_file_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
@@ -789,7 +781,6 @@ if __name__ == "__main__":
         else:
             messagebox.showerror("Critical Startup Error", f"Could not create a lock file: {e}\nThe application cannot start.")
         sys.exit(1)
-    # --- End Single Instance Check ---
 
     update_globals_from_settings(current_app_settings, initial_load=True)
 
