@@ -3,8 +3,8 @@ import os
 import numpy as np
 
 
-# Kein 'from threading import Event' hier, da es übergeben wird
-def resource_path_local(relative_path):  # Eigene Definition oder Import von main
+
+def resource_path_local(relative_path):  
     try:
         base_path = sys._MEIPASS
     except Exception:
@@ -12,16 +12,16 @@ def resource_path_local(relative_path):  # Eigene Definition oder Import von mai
     return os.path.join(base_path, relative_path)
 
 class ModernOverlay(tk.Tk):
-    def __init__(self, speech_stop_event_ref):  # speech_stop_event wird jetzt übergeben
+    def __init__(self, speech_stop_event_ref):  
         super().__init__()
-        self.speech_stop_event = speech_stop_event_ref  # Referenz speichern
+        self.speech_stop_event = speech_stop_event_ref  
 
         self.overrideredirect(True)
         self.attributes('-topmost', True)
         self.attributes('-alpha', 0.9)
         self.config(bg='#0D1117')
 
-        # --- Set Overlay Icon ---
+
         try:
             overlay_icon_path = resource_path_local("icon.ico")
             if os.path.exists(overlay_icon_path):
@@ -103,7 +103,7 @@ class ModernOverlay(tk.Tk):
 
     def on_click(self, event):
         if self.mode == 'speaking':
-            self.speech_stop_event.set()  # Verwendet die übergebene Referenz
+            self.speech_stop_event.set()  
 
     def set_mode(self, mode):
         if mode == self.mode:
@@ -122,7 +122,7 @@ class ModernOverlay(tk.Tk):
             self.canvas.itemconfig(self.border, outline='#1E90FF')
             self.pulse_speed = self.speaking_speed
             self.particle_chance = 0.2
-            self.speech_stop_event.clear()  # Hier wird das Event auch gecleart
+            self.speech_stop_event.clear()  
             self.show()
         else:
             self.hide()
@@ -197,15 +197,15 @@ class ModernOverlay(tk.Tk):
         self.after(20, self._animate)
 
 
-# Optional: Testblock für overlay.py, falls du es isoliert testen möchtest
+
 if __name__ == '__main__':
     from threading import Event
 
-    # Ein Dummy-Event für Testzwecke
+
     dummy_speech_stop_event = Event()
 
     app = ModernOverlay(dummy_speech_stop_event)
-    app.set_mode('listening')  # Zum Testen direkt einen Modus setzen
+    app.set_mode('listening')
 
 
     def toggle_mode():
