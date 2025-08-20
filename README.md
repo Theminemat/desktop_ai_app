@@ -19,8 +19,12 @@ You’ll need a Gemini API key to use the assistant.
 Get one for free here:  
 👉 [https://aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey)
 
-### 2. Run the App  
-You **must** run `main.py` to start the application.  
+### 2. Install depencies and run the APP
+Before running the app, install the required dependencies by running:
+ ```bash
+pip install -r requirements.txt
+ ```
+Then, start the application by running: `main.py`
 Without it, the assistant won’t run and nothing will appear in the system tray.
 
 ```bash
